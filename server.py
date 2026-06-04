@@ -11,6 +11,7 @@ from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
 from mcp.server.transport_security import TransportSecuritySettings
+from mcp.types import CallToolResult, TextContent
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
@@ -62,28 +63,24 @@ CORS_HEADERS = {
 
 
 # ── Resource: widget HTML ─────────────────────────────────────────────────────
-@mcp.resource("ui://widget/main.html")
-async def widget_resource() -> dict:
-    return {
-        "contents": [
-            {
-                "uri": OUTPUT_TEMPLATE,
-                "mimeType": "text/html+skybridge",
-                "text": WIDGET_HTML,
-                "_meta": {
-                    "openai/widgetPrefersBorder": True,
-                },
-            }
-        ]
-    }
+@mcp.resource(
+    OUTPUT_TEMPLATE,
+    name="challenge-widget",
+    mime_type="text/html+skybridge",
+    meta={"openai/widgetPrefersBorder": True},
+)
+async def widget_resource() -> str:
+    """Return raw Skybridge HTML; mime_type must be text/html+skybridge for Athena."""
+    return WIDGET_HTML
 
 
-def _tool_response(items: list[dict], narration: str, **extra) -> dict:
-    structured = {"items": items, **extra}
-    return {
-        "content": [{"type": "text", "text": narration}],
-        "structuredContent": structured,
-    }
+def _tool_response(items: list[dict], narration: str, **extra) -> CallToolResult:
+    """Athena reads structuredContent at the CallToolResult root, not nested in text JSON."""
+    return CallToolResult(
+        content=[TextContent(type="text", text=narration)],
+        structuredContent={"items": items, **extra},
+        isError=False,
+    )
 
 
 def _tool_meta(tool_key: str) -> dict:

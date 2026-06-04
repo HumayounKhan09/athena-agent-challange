@@ -48,12 +48,12 @@ async def test_widget_loaded_at_startup():
 
 @pytest.mark.asyncio
 async def test_widget_resource_metadata():
-    payload = await widget_resource()
-    content = payload["contents"][0]
-    assert content["uri"] == OUTPUT_TEMPLATE
-    assert content["mimeType"] == "text/html+skybridge"
-    assert content["text"] == WIDGET_HTML
-    assert content["_meta"]["openai/widgetPrefersBorder"] is True
+    html = await widget_resource()
+    assert html == WIDGET_HTML
+    resources = await mcp.list_resources()
+    assert len(resources) == 1
+    assert str(resources[0].uri) == OUTPUT_TEMPLATE
+    assert resources[0].mimeType == "text/html+skybridge"
 
 
 @pytest.mark.asyncio
@@ -85,23 +85,30 @@ async def test_tools_registered_with_metadata():
 @pytest.mark.asyncio
 async def test_fetch_data_returns_structured_content():
     result = await fetch_data(query="alpha", limit=5)
-    assert isinstance(result["structuredContent"]["items"], list)
-    assert result["content"][0]["type"] == "text"
-    assert "alpha" in result["content"][0]["text"].lower()
+    assert isinstance(result.structuredContent["items"], list)
+    assert result.content[0].type == "text"
+    assert "alpha" in result.content[0].text.lower()
 
 
 @pytest.mark.asyncio
 async def test_filter_data_returns_structured_content():
     result = await filter_data(query="", category="general", sort_by="name")
-    assert isinstance(result["structuredContent"]["items"], list)
-    assert result["content"][0]["type"] == "text"
-    assert all(item["category"] == "general" for item in result["structuredContent"]["items"])
+    assert isinstance(result.structuredContent["items"], list)
+    assert result.content[0].type == "text"
+    assert all(item["category"] == "general" for item in result.structuredContent["items"])
 
 
 @pytest.mark.asyncio
-async def test_call_tool_wrapper_returns_json_payload():
-    contents = await mcp.call_tool(TOOLS["fetch"]["name"], {"query": "beta", "limit": 5})
-    assert contents
-    payload = json.loads(contents[0].text)
-    assert payload["structuredContent"]["items"]
-    assert payload["content"][0]["type"] == "text"
+async def test_call_tool_wrapper_returns_call_tool_result():
+    result = await mcp.call_tool(TOOLS["fetch"]["name"], {"query": "beta", "limit": 5})
+    assert result.structuredContent["items"]
+    assert result.content[0].type == "text"
+
+
+@pytest.mark.asyncio
+async def test_read_resource_returns_skybridge_html():
+    contents = await mcp.read_resource(OUTPUT_TEMPLATE)
+    assert len(contents) == 1
+    assert contents[0].mime_type == "text/html+skybridge"
+    assert contents[0].content.startswith("<!DOCTYPE html>")
+    assert "fetch_data" in contents[0].content
