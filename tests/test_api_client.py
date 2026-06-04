@@ -8,8 +8,11 @@ import pytest
 import services.api_client as api_client
 from services.api_client import (
     _daily_averages_by_date,
+    _date_range_unavailable_reason,
+    _open_meteo_fetch_params,
     _pick_daily_average,
     _resolve_item_date,
+    _uses_explicit_date_range,
     fetch_items,
     filter_items,
     match_cities,
@@ -73,6 +76,44 @@ def test_resolve_item_date_today():
     assert _resolve_item_date("not-a-date") == api_client._today_iso()
 
 
+def test_uses_explicit_date_range():
+    assert _uses_explicit_date_range("2026-05-01") is True
+    assert _uses_explicit_date_range("today") is False
+    assert _uses_explicit_date_range("") is False
+
+
+def test_open_meteo_params_explicit_date():
+    meta = {"latitude": 51.5, "longitude": -0.1}
+    params = _open_meteo_fetch_params(
+        meta, "pm2_5", target_date="2026-05-01", use_date_range=True
+    )
+    assert params["start_date"] == "2026-05-01"
+    assert params["end_date"] == "2026-05-01"
+    assert "past_days" not in params
+
+
+def test_open_meteo_params_rolling_window():
+    meta = {"latitude": 51.5, "longitude": -0.1}
+    params = _open_meteo_fetch_params(
+        meta, "pm2_5", target_date="2026-06-04", use_date_range=False
+    )
+    assert params["past_days"] == 2
+    assert params["forecast_days"] == 5
+    assert "start_date" not in params
+
+
+def test_date_range_unavailable_reason_future():
+    reason = _date_range_unavailable_reason("2099-01-01")
+    assert reason is not None
+    assert "forecast" in reason.lower()
+
+
+def test_date_range_unavailable_reason_too_old():
+    reason = _date_range_unavailable_reason("2020-01-01")
+    assert reason is not None
+    assert "2022" in reason
+
+
 def test_pick_daily_average_fallback():
     averages = {"2026-06-02": 10.0, "2026-06-03": 12.0}
     avg, used, fallback = _pick_daily_average(averages, "2026-06-04")
@@ -112,7 +153,8 @@ async def test_fetch_items_open_meteo_success(monkeypatch):
 
     async def handler(request: httpx.Request) -> httpx.Response:
         assert "air-quality" in str(request.url)
-        assert "past_days" in str(request.url)
+        assert "start_date=2026-06-04" in str(request.url)
+        assert "end_date=2026-06-04" in str(request.url)
         return httpx.Response(
             200,
             json={
@@ -209,6 +251,67 @@ async def test_fetch_items_open_meteo_fallback_previous_day(monkeypatch):
     monkeypatch.setattr(api_client, "API_BASE", "https://air-quality.api.open-meteo.com")
 
     async def handler(request: httpx.Request) -> httpx.Response:
+        assert "past_days" in str(request.url)
+        return httpx.Response(
+            200,
+            json={
+                "hourly": {
+                    "time": ["2026-06-03T12:00", "2026-06-03T13:00"],
+                    "pm2_5": [8.0, 10.0],
+                }
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(api_client.httpx, "AsyncClient", client_factory)
+    items = await fetch_items(query="london", limit=5, date_str="today")
+    assert len(items) == 1
+    assert items[0]["date"] == "2026-06-03"
+    assert "No data for" in items[0]["description"]
+
+
+@pytest.mark.asyncio
+async def test_fetch_items_open_meteo_historical_date_strict(monkeypatch):
+    monkeypatch.setattr(api_client, "API_BASE", "https://air-quality.api.open-meteo.com")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert "start_date=2026-05-01" in str(request.url)
+        return httpx.Response(
+            200,
+            json={
+                "hourly": {
+                    "time": ["2026-05-01T08:00", "2026-05-01T09:00"],
+                    "pm2_5": [11.0, 13.0],
+                }
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(api_client.httpx, "AsyncClient", client_factory)
+    items = await fetch_items(query="london", limit=5, date_str="2026-05-01")
+    assert len(items) == 1
+    assert items[0]["date"] == "2026-05-01"
+    assert items[0]["value"] == 12.0
+
+
+@pytest.mark.asyncio
+async def test_fetch_items_open_meteo_explicit_date_no_fallback(monkeypatch):
+    monkeypatch.setattr(api_client, "API_BASE", "https://air-quality.api.open-meteo.com")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        assert "start_date=2026-06-04" in str(request.url)
         return httpx.Response(
             200,
             json={
@@ -228,9 +331,7 @@ async def test_fetch_items_open_meteo_fallback_previous_day(monkeypatch):
 
     monkeypatch.setattr(api_client.httpx, "AsyncClient", client_factory)
     items = await fetch_items(query="london", limit=5, date_str="2026-06-04")
-    assert len(items) == 1
-    assert items[0]["date"] == "2026-06-03"
-    assert "No data for 2026-06-04" in items[0]["description"]
+    assert items == []
 
 
 def test_daily_averages_by_date_groups_hours():

@@ -145,6 +145,51 @@ def _resolve_item_date(date_str: str) -> str:
         return _today_iso()
 
 
+def _parse_iso_date(date_str: str) -> date | None:
+    try:
+        return date.fromisoformat(date_str.strip())
+    except ValueError:
+        return None
+
+
+def _uses_explicit_date_range(date_str: str) -> bool:
+    """True when the user passed a calendar date (not today/yesterday/empty)."""
+    raw = date_str.strip()
+    if not raw:
+        return False
+    lowered = raw.lower()
+    if lowered in ("today", "now", "yesterday"):
+        return False
+    return _parse_iso_date(raw) is not None
+
+
+def _date_range_unavailable_reason(target_date: str) -> str | None:
+    """Human-readable hint when a date is unlikely to exist in Open-Meteo air-quality data."""
+    parsed = _parse_iso_date(target_date)
+    if parsed is None:
+        return None
+    today = date.today()
+    if parsed > today + timedelta(days=7):
+        return (
+            f"{target_date} is beyond the air-quality forecast horizon (~7 days). "
+            "Try today or a nearer date."
+        )
+    # CAMS forecast archives on the air-quality API start roughly Aug 2022 (global).
+    if parsed < date(2022, 8, 1):
+        return (
+            f"{target_date} is before Open-Meteo air-quality archives (~Aug 2022). "
+            "Try a more recent date."
+        )
+    return None
+
+
+def empty_fetch_date_hint(date_str: str, requested_date: str) -> str | None:
+    """Optional extra narration when an explicit date returns no readings."""
+    if not _uses_explicit_date_range(date_str):
+        return None
+    return _date_range_unavailable_reason(requested_date)
+
+
 def _hourly_date_key(time_value: str) -> str:
     """Extract YYYY-MM-DD from Open-Meteo hourly time strings."""
     return time_value[:10] if len(time_value) >= 10 else time_value
@@ -282,17 +327,24 @@ def _average_hourly(values: list[float | None]) -> float | None:
     return sum(nums) / len(nums)
 
 
-def _open_meteo_fetch_params(meta: dict[str, Any], pollutant: str) -> dict[str, Any]:
-    """Request a local-time window so partial or missing single-day slices still resolve."""
-    return {
+def _open_meteo_fetch_params(
+    meta: dict[str, Any],
+    pollutant: str,
+    *,
+    target_date: str,
+    use_date_range: bool,
+) -> dict[str, Any]:
+    """Build query params: rolling window for today/yesterday, start/end for explicit dates."""
+    base: dict[str, Any] = {
         "latitude": meta["latitude"],
         "longitude": meta["longitude"],
         "hourly": pollutant,
         "timezone": "auto",
         "domains": "auto",
-        "past_days": 2,
-        "forecast_days": 5,
     }
+    if use_date_range:
+        return {**base, "start_date": target_date, "end_date": target_date}
+    return {**base, "past_days": 2, "forecast_days": 5}
 
 
 def _reading_from_hourly(
@@ -302,11 +354,19 @@ def _reading_from_hourly(
     pollutant: str,
     target_date: str,
     hourly: dict[str, Any],
+    strict_match: bool = False,
 ) -> dict[str, Any] | None:
     averages_by_date = _daily_averages_by_date(hourly, pollutant)
-    avg, used_date, used_fallback = _pick_daily_average(averages_by_date, target_date)
-    if avg is None or used_date is None:
-        return None
+    if strict_match:
+        if target_date not in averages_by_date:
+            return None
+        avg = averages_by_date[target_date]
+        used_date = target_date
+        used_fallback = False
+    else:
+        avg, used_date, used_fallback = _pick_daily_average(averages_by_date, target_date)
+        if avg is None or used_date is None:
+            return None
     band = severity_for_value(pollutant, avg)
     description = _build_description(pollutant, avg, band)
     if used_fallback and used_date != target_date:
@@ -331,12 +391,20 @@ async def _fetch_city_reading(
     city_key: str,
     pollutant: str,
     item_date: str,
+    *,
+    use_date_range: bool = False,
+    strict_match: bool = False,
 ) -> dict[str, Any] | None:
     meta = CITIES[city_key]
     url = f"{API_BASE.rstrip('/')}/v1/air-quality"
     response = await client.get(
         url,
-        params=_open_meteo_fetch_params(meta, pollutant),
+        params=_open_meteo_fetch_params(
+            meta,
+            pollutant,
+            target_date=item_date,
+            use_date_range=use_date_range,
+        ),
         headers=_auth_headers(),
     )
     response.raise_for_status()
@@ -352,6 +420,7 @@ async def _fetch_city_reading(
         pollutant=pollutant,
         target_date=item_date,
         hourly=hourly,
+        strict_match=strict_match,
     )
 
 
@@ -422,7 +491,8 @@ async def fetch_items(
     """Fetch air quality readings for cities matching query."""
     pollutant = _normalize_pollutant(pollutant)
     item_date = _resolve_item_date(date_str)
-    strict_date = bool(date_str.strip())
+    explicit_range = _uses_explicit_date_range(date_str)
+    strict_date = explicit_range
     city_keys = _resolve_city_keys(query, limit)
 
     if _uses_mock_api():
@@ -431,14 +501,21 @@ async def fetch_items(
             pollutant=pollutant,
             date_str=date_str,
             limit=limit,
-            strict_date=strict_date,
+            strict_date=bool(date_str.strip()),
         )
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         readings: list[dict[str, Any]] = []
         for city_key in city_keys:
             try:
-                reading = await _fetch_city_reading(client, city_key, pollutant, item_date)
+                reading = await _fetch_city_reading(
+                    client,
+                    city_key,
+                    pollutant,
+                    item_date,
+                    use_date_range=explicit_range,
+                    strict_match=strict_date,
+                )
                 if reading:
                     readings.append(reading)
             except httpx.HTTPError:

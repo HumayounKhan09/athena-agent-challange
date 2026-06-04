@@ -19,7 +19,13 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from config.tool_references import TOOLS, build_description, get_direct_tool_names
-from services.api_client import _resolve_item_date, filter_items, fetch_items, match_cities
+from services.api_client import (
+    _resolve_item_date,
+    empty_fetch_date_hint,
+    filter_items,
+    fetch_items,
+    match_cities,
+)
 
 
 def _transport_security_settings() -> TransportSecuritySettings | None:
@@ -123,10 +129,17 @@ async def fetch_data(
         bands[item.get("category", "unknown")] = bands.get(item.get("category", "unknown"), 0) + 1
     summary = ", ".join(f"{count} {band}" for band, count in sorted(bands.items())) or "no readings"
     if not items:
+        date_hint = empty_fetch_date_hint(date, requested_date)
         narration = (
             f"No {pollutant_label} readings for {len(cities) or 'default'} cities on {requested_date}. "
-            "Open-Meteo may not have data yet for that date; try an earlier date or another pollutant."
         )
+        if date_hint:
+            narration += date_hint
+        else:
+            narration += (
+                "Open-Meteo may not have hourly data for that date; "
+                "try today, yesterday, or another pollutant."
+            )
     elif used_dates and (len(used_dates) > 1 or used_dates[0] != requested_date):
         narration = (
             f"Compared {pollutant_label} for {len(items)} cities "
