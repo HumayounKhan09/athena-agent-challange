@@ -1,5 +1,7 @@
 # Athena AI Challenge — MCP Agent
 
+**→ [How to Use](HOW_TO_USE.md)** — setup, ngrok, Athena connector, widget, and troubleshooting (start here).
+
 Python MCP server with an interactive Skybridge widget for the Athena AI Challenge. Topic is **TBD** — the server uses mock data until a real public API is assigned (Phase 6).
 
 For Athena platform questions, use the **athena-knowledge** skill (`.cursor/skills/athena-knowledge/SKILL.md`).
@@ -11,6 +13,34 @@ For Athena platform questions, use the **athena-knowledge** skill (`.cursor/skil
 - [httpx](https://www.python-httpx.org/) for API calls
 - [uvicorn](https://www.uvicorn.org/) ASGI server
 - Vanilla JS widget (`widget.html`) served as `text/html+skybridge`
+
+## Prerequisites
+
+| Tool | Required | Notes |
+|------|----------|-------|
+| **Python 3.10+** | Yes | 3.13 recommended; use a virtualenv (see Setup) |
+| **ngrok** | Yes (for Athena tunnel) | Expose port `8000` to the public internet |
+| **Node.js / npm** | Optional | For MCP Inspector via `npx` only |
+| **Homebrew** | Optional | Easiest way to install ngrok on macOS |
+
+### ngrok on macOS
+
+Install one of:
+
+```bash
+# Homebrew (if installed)
+brew install ngrok/ngrok/ngrok
+```
+
+```bash
+# Or download the arm64 binary into this repo (no brew needed)
+mkdir -p .local/bin
+curl -fsSL -o /tmp/ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-arm64.zip
+unzip -o /tmp/ngrok.zip -d .local/bin
+export PATH="$(pwd)/.local/bin:$PATH"
+```
+
+Sign up at [ngrok](https://ngrok.com/), then authenticate: `ngrok config add-authtoken <token>`.
 
 ## Setup
 
