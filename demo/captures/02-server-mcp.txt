@@ -1,0 +1,24 @@
+$ $ curl -s http://localhost:8000/
+MCP server running
+
+$ $ curl -s http://localhost:8000/mcp
+MCP endpoint ready
+
+$ $ curl -s -X POST http://localhost:8000/mcp (initialize)
+HTTP/1.1 200 OK
+date: Thu, 04 Jun 2026 02:02:47 GMT
+server: uvicorn
+cache-control: no-cache, no-transform
+connection: keep-alive
+content-type: text/event-stream
+mcp-session-id: 0b287186feb5471792188e608a42e140
+x-accel-buffering: no
+access-control-allow-origin: *
+access-control-allow-methods: POST GET OPTIONS DELETE
+access-control-allow-headers: content-type mcp-session-id
+access-control-expose-headers: Mcp-Session-Id
+Transfer-Encoding: chunked
+
+event: message
+data: {"jsonrpc":"2.0","id":1,"result":{"protocolVersion":"2024-11-05","capabilities":{"experimental":{},"prompts":{"listChanged":false},"resources":{"subscribe":false,"listChanged":false},"tools":{"listChanged":false}},"serverInfo":{"name":"challenge-agent","version":"1.27.2"}}}
+

@@ -1,0 +1,47 @@
+============================= test session starts ==============================
+platform darwin -- Python 3.13.11, pytest-9.0.3, pluggy-1.6.0 -- /Users/humayoun/Documents/athena-agent-challange/.venv/bin/python3.13
+cachedir: .pytest_cache
+rootdir: /Users/humayoun/Documents/athena-agent-challange
+configfile: pytest.ini
+testpaths: tests
+plugins: asyncio-1.4.0, anyio-4.13.0
+asyncio: mode=Mode.AUTO, debug=False, asyncio_default_fixture_loop_scope=None, asyncio_default_test_loop_scope=function
+collecting ... collected 35 items
+
+tests/test_api_client.py::test_fetch_items_uses_mock_catalog PASSED      [  2%]
+tests/test_api_client.py::test_filter_items_mock_category_and_sort PASSED [  5%]
+tests/test_api_client.py::test_shape_item_normalizes_fields PASSED       [  8%]
+tests/test_api_client.py::test_fetch_items_real_api_success PASSED       [ 11%]
+tests/test_api_client.py::test_fetch_items_real_api_404 PASSED           [ 14%]
+tests/test_api_client.py::test_fetch_items_real_api_timeout PASSED       [ 17%]
+tests/test_api_client.py::test_fetch_items_sends_api_key_header PASSED   [ 20%]
+tests/test_server.py::test_health_endpoint PASSED                        [ 22%]
+tests/test_server.py::test_options_mcp_returns_204_with_cors PASSED      [ 25%]
+tests/test_server.py::test_mcp_get_includes_cors_headers PASSED          [ 28%]
+tests/test_server.py::test_widget_loaded_at_startup PASSED               [ 31%]
+tests/test_server.py::test_widget_resource_metadata PASSED               [ 34%]
+tests/test_server.py::test_widget_injects_tool_refs_json PASSED          [ 37%]
+tests/test_server.py::test_tools_registered_with_metadata PASSED         [ 40%]
+tests/test_server.py::test_fetch_data_returns_structured_content PASSED  [ 42%]
+tests/test_server.py::test_filter_data_returns_structured_content PASSED [ 45%]
+tests/test_server.py::test_call_tool_wrapper_returns_json_payload PASSED [ 48%]
+tests/test_tool_references.py::test_indirect_triggers_start_with_use_this_when PASSED [ 51%]
+tests/test_tool_references.py::test_each_tool_has_indirect_triggers PASSED [ 54%]
+tests/test_tool_references.py::test_direct_refs_mention_other_tool_names PASSED [ 57%]
+tests/test_tool_references.py::test_build_description_composes_all_sections PASSED [ 60%]
+tests/test_tool_references.py::test_build_description_starts_with_use_this_when PASSED [ 62%]
+tests/test_tool_references.py::test_get_direct_tool_names_maps_widget_actions PASSED [ 65%]
+tests/test_tool_references.py::test_get_tool_names_matches_config PASSED [ 68%]
+tests/test_tool_references.py::test_tool_metadata_fields_present PASSED  [ 71%]
+tests/test_widget_static.py::test_required_dom_ids PASSED                [ 74%]
+tests/test_widget_static.py::test_item_card_class_present PASSED         [ 77%]
+tests/test_widget_static.py::test_openai_bridge_patterns PASSED          [ 80%]
+tests/test_widget_static.py::test_tool_refs_placeholder_in_source PASSED [ 82%]
+tests/test_widget_static.py::test_fetch_uses_config_driven_tool_ref PASSED [ 85%]
+tests/test_widget_static.py::test_category_filter_calls_filter_tool PASSED [ 88%]
+tests/test_widget_static.py::test_client_side_sort_without_filter_tool_call PASSED [ 91%]
+tests/test_widget_static.py::test_loading_state PASSED                   [ 94%]
+tests/test_widget_static.py::test_polish_features PASSED                 [ 97%]
+tests/test_widget_static.py::test_no_external_dependencies PASSED        [100%]
+
+============================== 35 passed in 0.14s ==============================

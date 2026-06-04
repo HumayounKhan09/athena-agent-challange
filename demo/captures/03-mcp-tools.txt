@@ -1,0 +1,96 @@
+$ curl -X POST http://localhost:8000/mcp  # initialize
+HTTP 200
+{
+  "jsonrpc": "2.0",
+  "id": 1,
+  "result": {
+    "protocolVersion": "2024-11-05",
+    "capabilities": {
+      "experimental": {},
+      "prompts": {
+        "listChanged": false
+      },
+      "resources": {
+        "subscribe": false,
+        "listChanged": false
+      },
+      "tools": {
+        "listChanged": false
+      }
+    },
+    "serverInfo": {
+      "name": "challenge-agent",
+      "version": "1.27.2"
+    }
+  }
+}
+
+$ curl -X POST http://localhost:8000/mcp  # notifications/initialized
+HTTP 200
+{
+  "jsonrpc": "2.0",
+  "id": 2,
+  "error": {
+    "code": -32602,
+    "message": "Invalid request parameters",
+    "data": ""
+  }
+}
+
+$ curl -X POST http://localhost:8000/mcp  # tools/list
+HTTP 200
+{
+  "jsonrpc": "2.0",
+  "id": 3,
+  "result": {
+    "tools": [
+      {
+        "name": "fetch_data",
+        "title": "Fetch Data",
+        "description": "Use this when the user asks about data or wants to search for data. Use this when the user wants to look up or load items into the widget. Do not use for filtering, sorting, or narrowing results already shown in the widget. Do not use when the user only wants to change category or sort on loaded results. For filtering already-loaded results, use filter_data instead.",
+        "inputSchema": {
+          "properties": {
+            "query": {
+              "title": "Query",
+              "type": "string"
+            },
+            "limit": {
+              "default": 20,
+              "title": "Limit",
+              "type": "integer"
+            }
+          },
+          "required": [
+            "query"
+          ],
+          "title": "fetch_dataArguments",
+          "type": "object"
+        },
+        "annotations": {
+          "readOnlyHint": true,
+          "destructiveHint": false,
+          "openWorldHint": false
+        },
+        "_meta": {
+          "openai/outputTemplate": "ui://widget/main.html",
+          "openai/toolInvo
+
+Tools: fetch_data, filter_data
+
+$ curl -X POST http://localhost:8000/mcp  # tools/call
+HTTP 200
+{
+  "jsonrpc": "2.0",
+  "id": 4,
+  "result": {
+    "content": [
+      {
+        "type": "text",
+        "text": "{\n  \"content\": [\n    {\n      \"type\": \"text\",\n      \"text\": \"Found 1 results for 'alpha'.\"\n    }\n  ],\n  \"structuredContent\": {\n    \"items\": [\n      {\n        \"id\": \"1\",\n        \"name\": \"Alpha Project\",\n        \"description\": \"First mock item for development.\",\n        \"category\": \"general\",\n        \"date\": \"2024-01-15\"\n      }\n    ],\n    \"query\": \"alpha\",\n    \"total\": 1\n  }\n}"
+      }
+    ],
+    "isError": false
+  }
+}
+
+fetch_data returned 0 item(s); first: n/a

@@ -1,0 +1,10 @@
+Athena agent registration requires ngrok plus a logged-in athenachat.bot account.
+ngrok was not installed in the recording environment.
+Browser reached https://athenachat.bot/chatbot/mybots/create (agent type selection).
+
+Manual steps to finish Athena MCP connector setup:
+  1. ngrok http 8000
+  2. Open https://athenachat.bot/chatbot/mybots/create
+  3. Add MCP URL: https://<ngrok-host>/mcp
+  4. Refresh connector after metadata changes (Settings → Connectors → Refresh)
+  5. Prompt: "fetch data for alpha"
