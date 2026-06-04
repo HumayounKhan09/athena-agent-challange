@@ -80,6 +80,7 @@ def test_uses_explicit_date_range():
     assert _uses_explicit_date_range("2026-05-01") is True
     assert _uses_explicit_date_range("today") is False
     assert _uses_explicit_date_range("") is False
+    assert _uses_explicit_date_range(api_client._today_iso()) is False
 
 
 def test_open_meteo_params_explicit_date():
@@ -148,21 +149,22 @@ async def test_shape_item_normalizes_fields():
 
 
 @pytest.mark.asyncio
-async def test_fetch_items_open_meteo_success(monkeypatch):
+async def test_fetch_items_open_meteo_today_iso_uses_rolling_window(monkeypatch):
     monkeypatch.setattr(api_client, "API_BASE", "https://air-quality.api.open-meteo.com")
+    today = api_client._today_iso()
 
     async def handler(request: httpx.Request) -> httpx.Response:
         assert "air-quality" in str(request.url)
-        assert "start_date=2026-06-04" in str(request.url)
-        assert "end_date=2026-06-04" in str(request.url)
+        assert "past_days" in str(request.url)
+        assert "start_date" not in str(request.url)
         return httpx.Response(
             200,
             json={
                 "hourly": {
                     "time": [
-                        "2026-06-04T00:00",
-                        "2026-06-04T01:00",
-                        "2026-06-04T02:00",
+                        f"{today}T00:00",
+                        f"{today}T01:00",
+                        f"{today}T02:00",
                     ],
                     "pm2_5": [12.0, 14.0, 16.0],
                 }
@@ -177,7 +179,7 @@ async def test_fetch_items_open_meteo_success(monkeypatch):
         return original_client(*args, **kwargs)
 
     monkeypatch.setattr(api_client.httpx, "AsyncClient", client_factory)
-    items = await fetch_items(query="london", limit=5, pollutant="pm2_5", date_str="2026-06-04")
+    items = await fetch_items(query="london", limit=5, pollutant="pm2_5", date_str=today)
     assert len(items) == 1
     assert items[0]["name"] == "London"
     assert items[0]["value"] == 14.0
@@ -309,14 +311,15 @@ async def test_fetch_items_open_meteo_historical_date_strict(monkeypatch):
 @pytest.mark.asyncio
 async def test_fetch_items_open_meteo_explicit_date_no_fallback(monkeypatch):
     monkeypatch.setattr(api_client, "API_BASE", "https://air-quality.api.open-meteo.com")
+    historical = "2026-05-01"
 
     async def handler(request: httpx.Request) -> httpx.Response:
-        assert "start_date=2026-06-04" in str(request.url)
+        assert f"start_date={historical}" in str(request.url)
         return httpx.Response(
             200,
             json={
                 "hourly": {
-                    "time": ["2026-06-03T12:00", "2026-06-03T13:00"],
+                    "time": ["2026-04-30T12:00", "2026-04-30T13:00"],
                     "pm2_5": [8.0, 10.0],
                 }
             },
@@ -330,8 +333,22 @@ async def test_fetch_items_open_meteo_explicit_date_no_fallback(monkeypatch):
         return original_client(*args, **kwargs)
 
     monkeypatch.setattr(api_client.httpx, "AsyncClient", client_factory)
-    items = await fetch_items(query="london", limit=5, date_str="2026-06-04")
+    items = await fetch_items(query="london", limit=5, date_str=historical)
     assert items == []
+
+
+@pytest.mark.asyncio
+async def test_filter_items_live_path_preserves_today_keyword(monkeypatch):
+    monkeypatch.setattr(api_client, "API_BASE", "https://air-quality.api.open-meteo.com")
+    seen_date_str: list[str] = []
+
+    async def fake_fetch_items(**kwargs):
+        seen_date_str.append(kwargs.get("date_str", ""))
+        return []
+
+    monkeypatch.setattr(api_client, "fetch_items", fake_fetch_items)
+    await filter_items(query="london", date_str="today")
+    assert seen_date_str == ["today"]
 
 
 def test_daily_averages_by_date_groups_hours():

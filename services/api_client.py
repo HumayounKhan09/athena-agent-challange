@@ -152,15 +152,27 @@ def _parse_iso_date(date_str: str) -> date | None:
         return None
 
 
+def _near_present_window() -> tuple[date, date]:
+    """Calendar dates covered by Open-Meteo past_days=2 and forecast_days=5."""
+    today = date.today()
+    return today - timedelta(days=2), today + timedelta(days=5)
+
+
 def _uses_explicit_date_range(date_str: str) -> bool:
-    """True when the user passed a calendar date (not today/yesterday/empty)."""
+    """True when the user passed a historical ISO date outside the rolling window."""
     raw = date_str.strip()
     if not raw:
         return False
     lowered = raw.lower()
     if lowered in ("today", "now", "yesterday"):
         return False
-    return _parse_iso_date(raw) is not None
+    parsed = _parse_iso_date(raw)
+    if parsed is None:
+        return False
+    window_start, window_end = _near_present_window()
+    if window_start <= parsed <= window_end:
+        return False
+    return True
 
 
 def _date_range_unavailable_reason(target_date: str) -> str | None:
@@ -547,7 +559,7 @@ async def filter_items(
             strict_date=strict_date,
         )
     else:
-        items = await fetch_items(query=query, limit=20, pollutant=pollutant, date_str=item_date)
+        items = await fetch_items(query=query, limit=20, pollutant=pollutant, date_str=date_str)
         if category:
             items = [i for i in items if i.get("category") == category]
         if min_severity:
