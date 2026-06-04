@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Challenge Widget</title>
+  <title>Air Quality Comparison</title>
   <style>
     :root { color: #0b0b0f; font-family: "Inter", system-ui, sans-serif; }
     html, body { width: 100%; min-height: 100%; box-sizing: border-box; margin: 0; padding: 0; }
@@ -14,6 +14,12 @@
       justify-content: space-between;
       margin-bottom: 12px;
       gap: 12px;
+    }
+
+    #header h1 {
+      margin: 0;
+      font-size: 16px;
+      font-weight: 700;
     }
 
     #count-badge {
@@ -71,7 +77,7 @@
     #results {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 10px;
     }
 
     .item-card {
@@ -89,14 +95,57 @@
       border-color: #111bf5;
     }
 
-    .item-card h3 { margin: 0 0 4px; font-size: 15px; }
-    .item-card p { margin: 0; font-size: 13px; color: #6c768a; }
-    .item-card .meta {
-      margin-top: 8px;
+    .item-card h3 {
+      margin: 0 0 6px;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+
+    .severity-badge {
       font-size: 11px;
-      color: #94a3b8;
-      text-transform: uppercase;
-      letter-spacing: 0.04em;
+      font-weight: 600;
+      padding: 2px 8px;
+      border-radius: 999px;
+      text-transform: capitalize;
+    }
+
+    .severity-good { background: #dcfce7; color: #166534; }
+    .severity-moderate { background: #fef9c3; color: #854d0e; }
+    .severity-unhealthy { background: #ffedd5; color: #9a3412; }
+    .severity-very_unhealthy { background: #fee2e2; color: #991b1b; }
+
+    .bar-track {
+      height: 8px;
+      background: #e2e8f0;
+      border-radius: 4px;
+      overflow: hidden;
+      margin: 8px 0 4px;
+    }
+
+    .bar-fill {
+      height: 100%;
+      border-radius: 4px;
+      transition: width 0.2s ease;
+    }
+
+    .bar-good { background: #22c55e; }
+    .bar-moderate { background: #eab308; }
+    .bar-unhealthy { background: #f97316; }
+    .bar-very_unhealthy { background: #ef4444; }
+
+    .item-card .meta {
+      margin-top: 4px;
+      font-size: 12px;
+      color: #64748b;
+    }
+
+    .item-card .value-line {
+      margin: 0;
+      font-size: 13px;
+      color: #475569;
     }
 
     #detail-panel {
@@ -167,32 +216,36 @@
 </head>
 <body>
   <div id="header">
-    <div id="count-badge">0 results</div>
+    <h1>Air Quality Comparison</h1>
+    <div id="count-badge">0 cities</div>
   </div>
 
   <script id="tool-refs" type="application/json">__TOOL_REFS_JSON__</script>
 
   <div id="controls">
-    <input id="search-input" type="text" placeholder="Search…" />
-    <select id="category-filter" aria-label="Filter by category">
-      <option value="">All categories</option>
-      <option value="general">General</option>
-      <option value="research">Research</option>
-      <option value="reports">Reports</option>
+    <input id="search-input" type="text" placeholder="Cities (e.g. London, Paris)…" />
+    <input id="date-input" type="date" aria-label="Date" />
+    <select id="category-filter" aria-label="Pollutant">
+      <option value="pm2_5">PM2.5</option>
+      <option value="pm10">PM10</option>
+      <option value="ozone">Ozone</option>
+    </select>
+    <select id="severity-filter" aria-label="Minimum severity">
+      <option value="">All severities</option>
+      <option value="good">Good+</option>
+      <option value="moderate">Moderate+</option>
+      <option value="unhealthy">Unhealthy+</option>
+      <option value="very_unhealthy">Very unhealthy only</option>
     </select>
     <select id="sort-select">
-      <option value="name">Sort: name</option>
-      <option value="date">Sort: date</option>
-      <option value="category">Sort: category</option>
+      <option value="value">Sort: pollution (low)</option>
+      <option value="value_desc">Sort: pollution (high)</option>
+      <option value="name">Sort: city A–Z</option>
     </select>
-    <select id="sort-direction">
-      <option value="asc">Ascending</option>
-      <option value="desc">Descending</option>
-    </select>
-    <button id="search-btn" type="button">Search</button>
+    <button id="search-btn" type="button">Compare</button>
   </div>
 
-  <div id="status">Enter a search term above.</div>
+  <div id="status">Enter cities and click Compare.</div>
 
   <div id="layout">
     <div id="results"></div>
@@ -210,19 +263,24 @@
       document.getElementById("tool-refs").textContent.trim()
     );
 
+    const MAX_BAR = 120;
+
     let items = [...(window.openai?.toolOutput?.items ?? [])];
     let isLoading = false;
     let selectedItemId = window.openai?.widgetState?.selectedItemId ?? null;
-    let sortKey = window.openai?.widgetState?.sortKey ?? "name";
-    let sortDirection = window.openai?.widgetState?.sortDirection ?? "asc";
+    let sortKey = window.openai?.widgetState?.sortKey ?? "value_desc";
     let lastQuery = window.openai?.widgetState?.lastQuery ?? "";
+    let pollutant = window.openai?.widgetState?.pollutant ?? "pm2_5";
+    let itemDate = window.openai?.widgetState?.date ?? "";
+    let minSeverity = window.openai?.widgetState?.minSeverity ?? "";
 
     const resultsEl = document.getElementById("results");
     const statusEl = document.getElementById("status");
     const searchInput = document.getElementById("search-input");
+    const dateInput = document.getElementById("date-input");
     const categoryFilter = document.getElementById("category-filter");
+    const severityFilter = document.getElementById("severity-filter");
     const sortSelect = document.getElementById("sort-select");
-    const sortDirectionSelect = document.getElementById("sort-direction");
     const searchBtn = document.getElementById("search-btn");
     const countBadge = document.getElementById("count-badge");
     const detailPanel = document.getElementById("detail-panel");
@@ -231,9 +289,13 @@
     const detailMeta = document.getElementById("detail-meta");
     const detailClose = document.getElementById("detail-close");
 
+    const today = () => new Date().toISOString().slice(0, 10);
+
     searchInput.value = lastQuery;
+    categoryFilter.value = pollutant;
+    severityFilter.value = minSeverity;
     sortSelect.value = sortKey;
-    sortDirectionSelect.value = sortDirection;
+    dateInput.value = itemDate || today();
 
     const persistState = () => {
       window.openai?.setWidgetState?.({
@@ -241,23 +303,37 @@
         lastQuery: searchInput.value,
         selectedItemId,
         sortKey,
-        sortDirection,
+        pollutant: categoryFilter.value,
+        date: dateInput.value,
+        minSeverity: severityFilter.value,
       });
     };
 
     const updateCountBadge = () => {
-      const label = items.length === 1 ? "1 result" : `${items.length} results`;
-      countBadge.textContent = label;
+      const n = items.length;
+      countBadge.textContent = n === 1 ? "1 city" : `${n} cities`;
+    };
+
+    const severityClass = (band) => `severity-${band || "good"}`;
+
+    const barWidth = (value) => {
+      const v = Number(value) || 0;
+      return `${Math.min(100, (v / MAX_BAR) * 100)}%`;
     };
 
     const sortItems = () => {
       sortKey = sortSelect.value;
-      sortDirection = sortDirectionSelect.value;
+      const reverse = sortKey.endsWith("_desc");
+      const key = reverse ? sortKey.replace(/_desc$/, "") : sortKey;
       items = [...items].sort((a, b) => {
-        const left = String(a[sortKey] ?? "");
-        const right = String(b[sortKey] ?? "");
+        if (key === "value") {
+          const cmp = Number(a.value) - Number(b.value);
+          return reverse ? -cmp : cmp;
+        }
+        const left = String(a[key] ?? a.name ?? "");
+        const right = String(b[key] ?? b.name ?? "");
         const cmp = left.localeCompare(right);
-        return sortDirection === "desc" ? -cmp : cmp;
+        return reverse ? -cmp : cmp;
       });
     };
 
@@ -271,9 +347,16 @@
 
     const openDetailPanel = (item) => {
       selectedItemId = item.id;
-      detailTitle.textContent = item.name ?? item.id ?? "Item";
-      detailDescription.textContent = item.description ?? "No description available.";
-      detailMeta.textContent = [item.category, item.date].filter(Boolean).join(" · ");
+      detailTitle.textContent = item.name ?? item.id ?? "City";
+      detailDescription.textContent = item.description ?? "No details available.";
+      detailMeta.textContent = [
+        item.pollutant?.toUpperCase?.() || item.pollutant,
+        item.value != null ? `${item.value} ${item.unit || ""}` : "",
+        item.date,
+        item.category,
+      ]
+        .filter(Boolean)
+        .join(" · ");
       detailPanel.classList.add("open");
       detailPanel.setAttribute("aria-hidden", "false");
       persistState();
@@ -296,8 +379,8 @@
       if (items.length === 0) {
         statusEl.innerHTML = `
           <div class="empty-state">
-            <strong>No results found</strong>
-            <span>Try a different search term or broaden your query.</span>
+            <strong>No readings found</strong>
+            <span>Try other cities, a different date, or lower the severity filter.</span>
           </div>
         `;
         statusEl.style.display = "block";
@@ -307,16 +390,26 @@
 
       statusEl.style.display = "none";
 
+      const maxVal = Math.max(...items.map((i) => Number(i.value) || 0), 1);
+
       items.forEach((item) => {
         const card = document.createElement("div");
         card.className = "item-card";
         if (item.id === selectedItemId) {
           card.classList.add("selected");
         }
+        const band = item.category || "good";
+        const pct = `${Math.min(100, ((Number(item.value) || 0) / maxVal) * 100)}%`;
         card.innerHTML = `
-          <h3>${item.name ?? item.id ?? "Untitled"}</h3>
-          <p>${item.description ?? ""}</p>
-          <div class="meta">${[item.category, item.date].filter(Boolean).join(" · ")}</div>
+          <h3>
+            <span>${item.name ?? item.id ?? "City"}</span>
+            <span class="severity-badge ${severityClass(band)}">${band.replace(/_/g, " ")}</span>
+          </h3>
+          <div class="bar-track">
+            <div class="bar-fill bar-${band}" style="width: ${pct}"></div>
+          </div>
+          <p class="value-line">${item.value ?? "—"} ${item.unit || ""}</p>
+          <div class="meta">${[item.pollutant, item.date].filter(Boolean).join(" · ")}</div>
         `;
         card.addEventListener("click", () => openDetailPanel(item));
         resultsEl.appendChild(card);
@@ -325,10 +418,24 @@
       persistState();
     };
 
+    const toolPayloadBase = () => ({
+      query: lastQuery || searchInput.value.trim(),
+      pollutant: categoryFilter.value,
+      date: dateInput.value || today(),
+      sort_by: sortSelect.value,
+      min_severity: severityFilter.value,
+    });
+
     const updateFromResponse = (response) => {
       if (response?.structuredContent?.items) {
         items = response.structuredContent.items;
         isLoading = false;
+        if (response.structuredContent.pollutant) {
+          categoryFilter.value = response.structuredContent.pollutant;
+        }
+        if (response.structuredContent.date) {
+          dateInput.value = response.structuredContent.date;
+        }
         sortItems();
         render();
       }
@@ -345,9 +452,15 @@
         if (globals?.widgetState) {
           selectedItemId = globals.widgetState.selectedItemId ?? selectedItemId;
           sortKey = globals.widgetState.sortKey ?? sortKey;
-          sortDirection = globals.widgetState.sortDirection ?? sortDirection;
           sortSelect.value = sortKey;
-          sortDirectionSelect.value = sortDirection;
+          lastQuery = globals.widgetState.lastQuery ?? lastQuery;
+          searchInput.value = lastQuery;
+          pollutant = globals.widgetState.pollutant ?? pollutant;
+          categoryFilter.value = pollutant;
+          minSeverity = globals.widgetState.minSeverity ?? minSeverity;
+          severityFilter.value = minSeverity;
+          itemDate = globals.widgetState.date ?? itemDate;
+          if (itemDate) dateInput.value = itemDate;
         }
       },
       { passive: true }
@@ -373,18 +486,23 @@
 
     const runSearch = async () => {
       const query = searchInput.value.trim();
-      if (!query) return;
       lastQuery = query;
-      await callTool(TOOL_REFS.search, { query, limit: 20 });
+      pollutant = categoryFilter.value;
+      itemDate = dateInput.value || today();
+      await callTool(TOOL_REFS.search, {
+        query,
+        limit: 20,
+        pollutant,
+        date: itemDate,
+      });
     };
 
-    const runCategoryFilter = async () => {
-      const category = categoryFilter.value;
-      await callTool(TOOL_REFS.filter, {
-        query: lastQuery,
-        category,
-        sort_by: sortKey,
-      });
+    const runFilter = async () => {
+      lastQuery = searchInput.value.trim();
+      pollutant = categoryFilter.value;
+      minSeverity = severityFilter.value;
+      itemDate = dateInput.value || today();
+      await callTool(TOOL_REFS.filter, toolPayloadBase());
     };
 
     searchBtn.addEventListener("click", runSearch);
@@ -396,14 +514,13 @@
       }
     });
 
-    categoryFilter.addEventListener("change", runCategoryFilter);
-
-    sortSelect.addEventListener("change", () => {
-      sortItems();
-      render();
+    categoryFilter.addEventListener("change", runFilter);
+    severityFilter.addEventListener("change", runFilter);
+    dateInput.addEventListener("change", () => {
+      if (lastQuery || items.length) runFilter();
     });
 
-    sortDirectionSelect.addEventListener("change", () => {
+    sortSelect.addEventListener("change", () => {
       sortItems();
       render();
     });

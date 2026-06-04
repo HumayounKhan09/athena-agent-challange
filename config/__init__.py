@@ -1,4 +1,4 @@
-"""Configuration package for MCP tool references and topic placeholders."""
+"""Configuration package for MCP tool references and air quality topic metadata."""
 
 from config.tool_references import (
     TOPIC_KEYWORDS,

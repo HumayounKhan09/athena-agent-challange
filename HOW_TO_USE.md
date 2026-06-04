@@ -1,6 +1,6 @@
-# How to Use — Athena MCP Agent
+# How to Use — Air Quality Comparison Dashboard
 
-Step-by-step guide to run, test, expose, and connect this challenge MCP server to [Athena](https://athenachat.bot). For stack details and file layout, see [README.md](README.md).
+Step-by-step guide to run, test, expose, and connect this air quality MCP server to [Athena](https://athenachat.bot). For stack details and file layout, see [README.md](README.md).
 
 **Video walkthrough:** [demo/athena-agent-demo.mp4](demo/athena-agent-demo.mp4) · **Re-record:** `./demo/record-demo.sh` (see [demo/README.md](demo/README.md))
 
@@ -36,10 +36,11 @@ MCP server ready at http://localhost:8000/mcp
 | Variable | Default | Purpose |
 |----------|---------|---------|
 | `PORT` | `8000` | HTTP port |
-| `API_BASE` | `https://api.example.com` | Real API base (placeholder → mock data) |
-| `API_KEY` | _(empty)_ | Optional bearer token |
+| `API_BASE` | `https://air-quality.api.open-meteo.com` | Open-Meteo Air Quality API |
+| `API_KEY` | _(empty)_ | Optional bearer token (not required) |
+| `AQ_USE_MOCK` | _(unset)_ | Set to `1` for offline fixture data |
 
-While `API_BASE` contains `example.com`, the server returns **mock items** — no external API calls.
+While `API_BASE` contains `example.com` or `AQ_USE_MOCK=1`, the server returns **fixture readings** — no external API calls.
 
 ---
 
@@ -125,15 +126,17 @@ Do **not** use the bare ngrok root URL — Athena expects the Streamable HTTP MC
 3. Under **Connectors**, paste your ngrok MCP URL (must end with `/mcp`)
 4. Save, then open the agent from [My bots](https://athenachat.bot/chatbot/mybots) → **Go to Agent**
 
+### Suggested system prompt
+
+> You help users compare air quality across cities. Use fetch_data for new comparisons; use filter_data when refining pollutant, date, or severity. Always render results in the widget.
+
 ### Test prompts (should trigger `fetch_data`)
 
-Try natural-language queries that match the current topic placeholders in `config/tool_references.py` (`TOPIC_LABEL` = `"data"`):
+- “Compare PM2.5 in London and Delhi today”
+- “Show air quality for Paris and Berlin”
+- “How polluted is Beijing compared to Los Angeles?”
 
-- “Search for data about quarterly reports”
-- “Look up items and show them in the widget”
-- “Load records matching research”
-
-After data loads, prompts like “filter to research category” may route to `filter_data` (model-dependent). The widget can also filter without the model via the category dropdown (direct tool call).
+After data loads, prompts like “show only unhealthy cities” or “switch to ozone” may route to `filter_data`. The widget can also change pollutant and severity via direct `callTool` without the model.
 
 ---
 
@@ -143,11 +146,13 @@ When `fetch_data` runs, Athena loads the Skybridge widget (`widget.html`).
 
 | Control | Behavior |
 |---------|----------|
-| **Search** | Calls `fetch_data` via `window.openai.callTool` with your query |
-| **Category filter** | Calls `filter_data` with the selected category |
-| **Sort / direction** | Client-side only — no MCP tool call |
-| **Result list** | Click a row to open the **detail panel** (title, meta, description) |
-| **Empty state** | Shown when search returns no items |
+| **Compare** | Calls `fetch_data` with cities, pollutant, and date |
+| **Pollutant** | Calls `filter_data` (PM2.5, PM10, ozone) |
+| **Minimum severity** | Calls `filter_data` |
+| **Date** | Calls `filter_data` when results exist |
+| **Sort** | Client-side by pollution level or city name |
+| **City cards** | Comparison bars; click for **detail panel** |
+| **Empty state** | Shown when no readings match filters |
 
 Widget state (last query, sort keys) persists via `setWidgetState` for the session.
 
@@ -165,7 +170,7 @@ The model reads each tool’s **description**, built from:
 - `negative_cases` — “Do not use for…”
 - `direct_refs` — cross-tool hints (e.g. use `filter_data` instead)
 
-Edit these when your **topic is assigned** (Phase 6): set `TOPIC_LABEL`, `TOPIC_KEYWORDS`, and per-tool triggers/negatives so the model picks the right tool from chat.
+Edit `TOPIC_LABEL`, `TOPIC_KEYWORDS`, and per-tool triggers/negatives in `config/tool_references.py` if you extend the domain.
 
 ### Direct (widget UI)
 
@@ -173,12 +178,10 @@ Edit these when your **topic is assigned** (Phase 6): set `TOPIC_LABEL`, `TOPIC_
 
 | UI action | MCP tool |
 |-----------|----------|
-| Search button | `fetch_data` |
-| Category dropdown | `filter_data` |
+| Compare button | `fetch_data` |
+| Pollutant / severity / date | `filter_data` |
 
 If you **rename tools**, update `TOOLS[*]["name"]`, server handlers, **and** this map together.
-
-Also update **`WIDGET_FILTER_CATEGORIES`** when the API exposes new category values (keep widget `<option>` values in sync).
 
 **Sort** never uses a tool — only JavaScript in the widget.
 
@@ -209,8 +212,8 @@ Skipping refresh often causes missing tools, old descriptions, or a broken widge
 | CORS / MCP session errors | Confirm server logs show port 8000; use HTTPS ngrok URL, not `http://localhost` in Athena |
 | `POST /mcp` **421**, `Invalid Host header: …ngrok…` | Restart server after pulling latest `server.py` (FastMCP must use `host="0.0.0.0"`). Or set `MCP_ALLOWED_HOSTS=your-subdomain.ngrok-free.dev` before `python server.py` |
 | Widget missing in Athena | In MCP Inspector: `resources/list` must show `text/html+skybridge`; `tools/call` must return top-level `structuredContent.items`. Restart server, then **Connectors → Refresh** |
-| Always mock data | `API_BASE` still contains `example.com` — set a real `API_BASE` (and `API_KEY` if needed) for Phase 6 |
-| Real API errors | Update `services/api_client.py` endpoints and response shaping |
+| Always fixture data | Unset `AQ_USE_MOCK` and use default `API_BASE` (Open-Meteo) |
+| Real API errors | Check network; verify city names match the built-in catalog in `services/api_client.py` |
 
 Platform-specific behavior: `.cursor/skills/athena-knowledge/SKILL.md` and [Athena docs](https://athenachat.bot/docs).
 

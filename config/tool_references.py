@@ -1,76 +1,56 @@
 """
 Single source of truth for MCP tool names, LLM descriptions, and widget direct refs.
-
-Adjusting when the topic is assigned (Phase 6)
------------------------------------------------
-1. Set TOPIC_LABEL and TOPIC_KEYWORDS to match the domain (e.g. "clinical trials").
-2. For each tool key in TOOLS, update:
-   - indirect_triggers: natural-language phrases the model should match (each must start
-     with "Use this when…"); these become the LLM routing hints via build_description().
-   - negative_cases: when the model should *not* pick this tool.
-   - direct_refs: explicit cross-tool guidance (e.g. "use filter_data instead").
-3. Rename tool ``name`` only if you also update server handlers and get_direct_tool_names()
-   so the widget's direct callTool keys stay in sync.
-4. Update WIDGET_FILTER_CATEGORIES when the API exposes new category values.
-5. Restart the server and refresh the Athena connector so descriptions and widget injection
-   reload.
-
-Indirect vs direct triggers
----------------------------
-- **Indirect** (LLM): composed into tool ``description`` from indirect_triggers,
-  negative_cases, and direct_refs — the model reads these when choosing tools.
-- **Direct** (widget): get_direct_tool_names() maps UI actions to MCP tool names; the widget
-  calls callTool with those names (search button → fetch tool, category dropdown → filter tool).
-  Client-side sort stays in the widget and does not call a tool.
 """
 
 from __future__ import annotations
 
-# ── Topic placeholders (swap in Phase 6) ─────────────────────────────────────
-TOPIC_LABEL = "data"
-TOPIC_KEYWORDS = ["data", "items", "records", "search"]
+TOPIC_LABEL = "air quality"
+TOPIC_KEYWORDS = ["air quality", "AQI", "pollution", "PM2.5", "cities", "compare"]
 
-# Categories shown in the widget category filter (server-side filter tool).
-WIDGET_FILTER_CATEGORIES = ["", "general", "research", "reports"]
+# Pollutants for widget category-filter (MCP pollutant param).
+WIDGET_POLLUTANTS = ["", "pm2_5", "pm10", "ozone"]
+WIDGET_SEVERITY_LEVELS = ["", "good", "moderate", "unhealthy", "very_unhealthy"]
 
-# ── Per-tool configuration ───────────────────────────────────────────────────
 TOOLS: dict[str, dict] = {
     "fetch": {
         "name": "fetch_data",
-        "title": "Fetch Data",
+        "title": "Fetch Air Quality",
         "indirect_triggers": [
-            "Use this when the user asks about "
-            f"{TOPIC_LABEL} or wants to search for {TOPIC_KEYWORDS[0]}.",
-            "Use this when the user wants to look up or load items into the widget.",
+            "Use this when the user wants to compare air quality across cities "
+            f"or asks about {TOPIC_LABEL}, {TOPIC_KEYWORDS[0]}, or pollution levels.",
+            "Use this when the user names cities (e.g. London, Paris, Delhi) and wants "
+            "a new comparison by pollutant or date.",
         ],
         "negative_cases": [
-            "Do not use for filtering, sorting, or narrowing results already shown in the widget.",
-            "Do not use when the user only wants to change category or sort on loaded results.",
+            "Do not use when the user only changes pollutant, severity, or date on "
+            "results already shown in the widget — use filter_data instead.",
+            "Do not use for sorting or opening detail on loaded results without new data.",
         ],
         "direct_refs": [
-            'For filtering already-loaded results, use filter_data instead.',
+            "For refining pollutant, minimum severity, or date on loaded results, use filter_data instead.",
         ],
-        "invoking": "Fetching data…",
-        "invoked": "Data loaded",
+        "invoking": "Fetching air quality…",
+        "invoked": "Air quality loaded",
     },
     "filter": {
         "name": "filter_data",
-        "title": "Filter Data",
+        "title": "Filter Air Quality",
         "indirect_triggers": [
-            "Use this when the user wants to filter, sort, or narrow down results "
-            "already shown in the widget.",
-            "Use this when the user asks to restrict results by category or refine a list.",
+            "Use this when the user wants to change pollutant (PM2.5, PM10, ozone), "
+            "date, or minimum severity on comparison results already in the widget.",
+            "Use this when the user asks to show only unhealthy cities or switch metrics "
+            "on an existing comparison.",
         ],
         "negative_cases": [
-            "Do not use for an initial search or when no results have been loaded yet.",
-            "Do not use when the user is starting a new query from scratch — use fetch_data.",
+            "Do not use for a brand-new city comparison with no prior context — use fetch_data.",
+            "Do not use when the user only sorts or inspects a city card client-side.",
         ],
         "direct_refs": [
-            "Requires a previous fetch_data call so the widget has context.",
-            "For a new search term, use fetch_data instead.",
+            "Requires context from a previous fetch_data call or loaded widget data.",
+            "For a new set of cities from scratch, use fetch_data instead.",
         ],
-        "invoking": "Filtering…",
-        "invoked": "Filtered",
+        "invoking": "Updating comparison…",
+        "invoked": "Comparison updated",
     },
 }
 

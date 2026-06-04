@@ -1,8 +1,8 @@
-# Athena AI Challenge — MCP Agent
+# Athena AI Challenge — Air Quality Comparison Dashboard
 
 **→ [How to Use](HOW_TO_USE.md)** — setup, ngrok, Athena connector, widget, and troubleshooting (start here).
 
-Python MCP server with an interactive Skybridge widget for the Athena AI Challenge. Topic is **TBD** — the server uses mock data until a real public API is assigned (Phase 6).
+Python MCP server with an interactive Skybridge widget that compares **air quality across cities** by pollutant, date, and severity. Data comes from the free [Open-Meteo Air Quality API](https://open-meteo.com/en/docs/air-quality-api).
 
 For Athena platform questions, use the **athena-knowledge** skill (`.cursor/skills/athena-knowledge/SKILL.md`).
 
@@ -21,30 +21,8 @@ For Athena platform questions, use the **athena-knowledge** skill (`.cursor/skil
 | **Python 3.10+** | Yes | 3.13 recommended; use a virtualenv (see Setup) |
 | **ngrok** | Yes (for Athena tunnel) | Expose port `8000` to the public internet |
 | **Node.js / npm** | Optional | For MCP Inspector via `npx` only |
-| **Homebrew** | Optional | Easiest way to install ngrok on macOS |
-
-### ngrok on macOS
-
-Install one of:
-
-```bash
-# Homebrew (if installed)
-brew install ngrok/ngrok/ngrok
-```
-
-```bash
-# Or download the arm64 binary into this repo (no brew needed)
-mkdir -p .local/bin
-curl -fsSL -o /tmp/ngrok.zip https://bin.equinox.io/c/bNyj1mQVY4c/ngrok-v3-stable-darwin-arm64.zip
-unzip -o /tmp/ngrok.zip -d .local/bin
-export PATH="$(pwd)/.local/bin:$PATH"
-```
-
-Sign up at [ngrok](https://ngrok.com/), then authenticate: `ngrok config add-authtoken <token>`.
 
 ## Setup
-
-Create and activate a virtual environment with **Python 3.10+**, then install dependencies:
 
 ```bash
 python3 -m venv .venv
@@ -57,10 +35,11 @@ pip install -r requirements.txt
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `PORT` | `8000` | HTTP port for the MCP server |
-| `API_BASE` | `https://api.example.com` | Public API base URL (placeholder uses mock data) |
-| `API_KEY` | _(empty)_ | Optional bearer token for authenticated APIs |
+| `API_BASE` | `https://air-quality.api.open-meteo.com` | Open-Meteo Air Quality API base |
+| `API_KEY` | _(empty)_ | Optional bearer token (not required for Open-Meteo) |
+| `AQ_USE_MOCK` | _(unset)_ | Set to `1` to use offline fixture data |
 
-When `API_BASE` contains `example.com`, the service layer returns mock items instead of making HTTP requests.
+When `API_BASE` contains `example.com` or `AQ_USE_MOCK=1`, the server uses fixture readings (used by `pytest`).
 
 ## Run locally
 
@@ -68,14 +47,6 @@ When `API_BASE` contains `example.com`, the service layer returns mock items ins
 source .venv/bin/activate
 python server.py
 ```
-
-Expected startup log:
-
-```text
-MCP server ready at http://localhost:8000/mcp
-```
-
-Health check:
 
 ```bash
 curl http://localhost:8000/
@@ -85,91 +56,44 @@ curl http://localhost:8000/
 ## Test
 
 ```bash
-source .venv/bin/activate
 pytest -v
 ```
 
-Test modules:
+## Supported cities
 
-- `tests/test_server.py` — health, CORS, tools, widget resource
-- `tests/test_api_client.py` — mock + mocked HTTP paths
-- `tests/test_tool_references.py` — config descriptions and direct-ref map
-- `tests/test_widget_static.py` — widget bridge and DOM contracts
+London, Paris, Berlin, Delhi, Beijing, Los Angeles (hardcoded coordinates — no geocoding API).
 
-## Expose with ngrok
+## Example Athena prompts
 
-```bash
-ngrok http 8000
-```
+- “Compare PM2.5 in London and Delhi today”
+- “Show air quality for Paris and Berlin”
+- “Switch to ozone for London and Los Angeles”
+- “Show only unhealthy cities”
 
-Use the HTTPS forwarding URL with the `/mcp` path when connecting to Athena, for example:
+## Widget interactions
 
-```text
-https://xxxx.ngrok.app/mcp
-```
-
-## MCP Inspector
-
-With the server running locally:
-
-```bash
-npx @modelcontextprotocol/inspector@latest \
-  --server-url http://localhost:8000/mcp \
-  --transport http
-```
-
-Verify:
-
-1. Two tools: `fetch_data`, `filter_data`
-2. One resource: `ui://widget/main.html` (`text/html+skybridge`)
-3. `fetch_data` returns `structuredContent.items`
+1. **Compare** — `fetch_data` with cities, pollutant, date
+2. **Pollutant dropdown** — `filter_data` (PM2.5, PM10, ozone)
+3. **Minimum severity** — `filter_data`
+4. **Date** — `filter_data` when results exist
+5. **Click a city card** — detail panel (client-side)
+6. **Sort** — client-side by pollution level or city name
 
 ## Connect to Athena
 
-1. Open [Athena agent creation](https://athenachat.bot/chatbot/mybots/create)
-2. Add your ngrok MCP URL ending in `/mcp`
-3. Test prompts that trigger `fetch_data`
+1. `ngrok http 8000` → use `https://<host>/mcp`
+2. [Create agent](https://athenachat.bot/chatbot/mybots/create) with suggested system prompt:
 
-### Refresh connector after metadata changes
+   > You help users compare air quality across cities. Use fetch_data for new comparisons; use filter_data when refining pollutant, date, or severity. Always render results in the widget.
 
-Whenever you change tool names, descriptions, `_meta`, or resource metadata:
-
-1. Save your code changes
-2. Restart the server (and ngrok if needed)
-3. In Athena: **Settings → Connectors → Refresh**
-4. Re-test in MCP Inspector before trying in Athena
-
-Stale connector metadata is a common cause of missing tools or broken widget rendering.
+3. After code changes: **Settings → Connectors → Refresh**
 
 ## Project layout
 
 ```text
 server.py                  # FastMCP server, tools, resource, HTTP/CORS
-widget.html                # Interactive widget (Skybridge)
+widget.html                # Air quality comparison widget (Skybridge)
 config/tool_references.py  # Tool names, LLM descriptions, widget direct refs
-services/api_client.py     # API abstraction (mock or real HTTP)
-tests/                     # pytest suite
-requirements.txt
+services/api_client.py     # Open-Meteo client + severity mapping
+tests/
 ```
-
-## Tool references (`config/tool_references.py`)
-
-All MCP tool names, LLM descriptions, and widget **direct** tool mappings live in one file:
-
-| Mechanism | Where | Purpose |
-|-----------|--------|---------|
-| **Indirect** (LLM) | `indirect_triggers`, `negative_cases`, `direct_refs` → `build_description()` | Athena chooses tools from natural-language routing hints |
-| **Direct** (widget) | `get_direct_tool_names()` → injected into `widget.html` as `TOOL_REFS` | Search button and category dropdown call `callTool` with configured names |
-
-When the topic is assigned, edit `TOPIC_LABEL`, `TOPIC_KEYWORDS`, per-tool triggers/negatives, and `WIDGET_FILTER_CATEGORIES` as needed. Restart the server so descriptions and injected JSON reload, then refresh the Athena connector.
-
-Client-side **sort** stays in the widget (no tool call). **Category filter** uses the direct `filter` tool mapping; **search** uses the `search` mapping.
-
-## Phase 6 — Topic assignment (later)
-
-When the topic and public API are assigned:
-
-1. Set `API_BASE` (and `API_KEY` if required)
-2. Update endpoints and response shaping in `services/api_client.py`
-3. Adjust `config/tool_references.py` (topic placeholders, indirect/direct triggers, categories)
-4. Refresh the Athena connector and re-run the full test suite

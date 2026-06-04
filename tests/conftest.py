@@ -5,7 +5,17 @@ from pathlib import Path
 import httpx
 import pytest
 
+import services.api_client as api_client
+
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
+
+
+@pytest.fixture(autouse=True)
+def mock_air_quality_api(monkeypatch):
+    """Keep tests offline with fixture air-quality readings."""
+    monkeypatch.setattr(api_client, "API_BASE", "https://api.example.com")
+    monkeypatch.setattr(api_client, "API_KEY", "")
+    monkeypatch.delenv("AQ_USE_MOCK", raising=False)
 
 
 @pytest.fixture

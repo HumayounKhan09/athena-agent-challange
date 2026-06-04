@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+import services.api_client as api_client
 from config.tool_references import TOOLS, get_direct_tool_names, get_tool_names
 from server import OUTPUT_TEMPLATE, WIDGET_HTML, fetch_data, filter_data, mcp, widget_resource
 
@@ -75,7 +76,7 @@ async def test_tools_registered_with_metadata():
         assert tool.description.startswith("Use this when")
         assert tool.annotations.readOnlyHint is True
         assert tool.annotations.destructiveHint is False
-        assert tool.annotations.openWorldHint is False
+        assert tool.annotations.openWorldHint is True
         assert tool.meta["openai/outputTemplate"] == OUTPUT_TEMPLATE
         assert tool.meta["openai/widgetAccessible"] is True
         assert tool.meta["openai/toolInvocation/invoking"]
@@ -84,23 +85,24 @@ async def test_tools_registered_with_metadata():
 
 @pytest.mark.asyncio
 async def test_fetch_data_returns_structured_content():
-    result = await fetch_data(query="alpha", limit=5)
+    result = await fetch_data(query="london paris", limit=5)
     assert isinstance(result.structuredContent["items"], list)
     assert result.content[0].type == "text"
-    assert "alpha" in result.content[0].text.lower()
+    assert result.structuredContent["pollutant"] == "pm2_5"
 
 
 @pytest.mark.asyncio
 async def test_filter_data_returns_structured_content():
-    result = await filter_data(query="", category="general", sort_by="name")
+    result = await filter_data(query="", min_severity="moderate", sort_by="value_desc")
     assert isinstance(result.structuredContent["items"], list)
     assert result.content[0].type == "text"
-    assert all(item["category"] == "general" for item in result.structuredContent["items"])
+    for item in result.structuredContent["items"]:
+        assert api_client._severity_rank(item["category"]) >= api_client._severity_rank("moderate")
 
 
 @pytest.mark.asyncio
 async def test_call_tool_wrapper_returns_call_tool_result():
-    result = await mcp.call_tool(TOOLS["fetch"]["name"], {"query": "beta", "limit": 5})
+    result = await mcp.call_tool(TOOLS["fetch"]["name"], {"query": "london", "limit": 5})
     assert result.structuredContent["items"]
     assert result.content[0].type == "text"
 
@@ -108,7 +110,7 @@ async def test_call_tool_wrapper_returns_call_tool_result():
 @pytest.mark.asyncio
 async def test_tool_content_is_narration_not_nested_json():
     """Athena needs structuredContent at result root; dict returns embed it in content.text."""
-    result = await fetch_data(query="alpha", limit=3)
+    result = await fetch_data(query="london", limit=3)
     narration = result.content[0].text
     assert not narration.strip().startswith("{")
     assert "structuredContent" not in narration
@@ -122,3 +124,10 @@ async def test_read_resource_returns_skybridge_html():
     assert contents[0].mime_type == "text/html+skybridge"
     assert contents[0].content.startswith("<!DOCTYPE html>")
     assert "fetch_data" in contents[0].content
+
+
+@pytest.mark.asyncio
+async def test_tool_response_includes_invocation_meta():
+    result = await fetch_data(query="london", limit=3)
+    assert result.meta["openai/toolInvocation/invoking"] == TOOLS["fetch"]["invoking"]
+    assert result.meta["openai/toolInvocation/invoked"] == TOOLS["fetch"]["invoked"]

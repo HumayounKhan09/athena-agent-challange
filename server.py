@@ -1,6 +1,5 @@
 """
-Athena AI Challenge — MCP Server (Python / FastMCP)
-Topic TBD — uses mock data until API_BASE is configured.
+Athena AI Challenge — Air Quality Comparison MCP Server (Python / FastMCP)
 """
 
 from __future__ import annotations
@@ -20,7 +19,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from config.tool_references import TOOLS, build_description, get_direct_tool_names
-from services.api_client import filter_items, fetch_items
+from services.api_client import filter_items, fetch_items, match_cities
 
 
 def _transport_security_settings() -> TransportSecuritySettings | None:
@@ -39,14 +38,12 @@ def _transport_security_settings() -> TransportSecuritySettings | None:
     return None
 
 
-# host=0.0.0.0 avoids FastMCP auto-enabling localhost-only DNS rebinding (breaks ngrok POST /mcp).
 mcp = FastMCP(
-    name="challenge-agent",
+    name="air-quality-agent",
     host="0.0.0.0",
     transport_security=_transport_security_settings(),
 )
 
-# ── Load widget HTML at startup (not on every request) ───────────────────────
 _WIDGET_PATH = Path(__file__).resolve().parent.joinpath("widget.html")
 _RAW_WIDGET_HTML = _WIDGET_PATH.read_text(encoding="utf-8")
 _TOOL_REFS_JSON = json.dumps(get_direct_tool_names())
@@ -62,10 +59,9 @@ CORS_HEADERS = {
 }
 
 
-# ── Resource: widget HTML ─────────────────────────────────────────────────────
 @mcp.resource(
     OUTPUT_TEMPLATE,
-    name="challenge-widget",
+    name="air-quality-widget",
     mime_type="text/html+skybridge",
     meta={"openai/widgetPrefersBorder": True},
 )
@@ -74,11 +70,16 @@ async def widget_resource() -> str:
     return WIDGET_HTML
 
 
-def _tool_response(items: list[dict], narration: str, **extra) -> CallToolResult:
+def _tool_response(items: list[dict], narration: str, tool_key: str, **extra) -> CallToolResult:
     """Athena reads structuredContent at the CallToolResult root, not nested in text JSON."""
+    tool = TOOLS[tool_key]
     return CallToolResult(
         content=[TextContent(type="text", text=narration)],
         structuredContent={"items": items, **extra},
+        _meta={
+            "openai/toolInvocation/invoking": tool["invoking"],
+            "openai/toolInvocation/invoked": tool["invoked"],
+        },
         isError=False,
     )
 
@@ -93,7 +94,6 @@ def _tool_meta(tool_key: str) -> dict:
     }
 
 
-# ── Tool 1: Primary fetch tool ────────────────────────────────────────────────
 @mcp.tool(
     name=TOOLS["fetch"]["name"],
     title=TOOLS["fetch"]["title"],
@@ -101,22 +101,37 @@ def _tool_meta(tool_key: str) -> dict:
     annotations={
         "readOnlyHint": True,
         "destructiveHint": False,
-        "openWorldHint": False,
+        "openWorldHint": True,
     },
     meta=_tool_meta("fetch"),
 )
-async def fetch_data(query: str, limit: int = 20) -> dict:
-    """Fetch items from the public API (mock when API_BASE is a placeholder)."""
-    items = await fetch_items(query=query, limit=limit)
+async def fetch_data(
+    query: str,
+    limit: int = 20,
+    pollutant: str = "pm2_5",
+    date: str = "",
+) -> CallToolResult:
+    """Fetch air quality readings from Open-Meteo for cities matching the query."""
+    items = await fetch_items(query=query, limit=limit, pollutant=pollutant, date_str=date)
+    cities = match_cities(query) or []
+    pollutant_label = pollutant or "pm2_5"
+    item_date = date or (items[0]["date"] if items else "")
+    bands = {}
+    for item in items:
+        bands[item.get("category", "unknown")] = bands.get(item.get("category", "unknown"), 0) + 1
+    summary = ", ".join(f"{count} {band}" for band, count in sorted(bands.items())) or "no readings"
     return _tool_response(
         items,
-        f"Found {len(items)} results for '{query}'.",
+        f"Compared {pollutant_label} for {len(items)} cities on {item_date}: {summary}.",
+        "fetch",
         query=query,
         total=len(items),
+        pollutant=pollutant_label,
+        date=item_date,
+        cities_queried=cities,
     )
 
 
-# ── Tool 2: Filter / detail tool ─────────────────────────────────────────────
 @mcp.tool(
     name=TOOLS["filter"]["name"],
     title=TOOLS["filter"]["title"],
@@ -124,23 +139,37 @@ async def fetch_data(query: str, limit: int = 20) -> dict:
     annotations={
         "readOnlyHint": True,
         "destructiveHint": False,
-        "openWorldHint": False,
+        "openWorldHint": True,
     },
     meta=_tool_meta("filter"),
 )
 async def filter_data(
     query: str,
     category: str = "",
-    sort_by: str = "name",
-) -> dict:
-    """Re-fetch with filter params and return updated widget data."""
-    items = await filter_items(query=query, category=category, sort_by=sort_by)
-    return _tool_response(
-        items,
-        f"Filtered to {len(items)} results.",
+    sort_by: str = "value_desc",
+    pollutant: str = "pm2_5",
+    date: str = "",
+    min_severity: str = "",
+) -> CallToolResult:
+    """Refine comparison by pollutant, date, severity band, and sort order."""
+    items = await filter_items(
         query=query,
         category=category,
         sort_by=sort_by,
+        pollutant=pollutant,
+        date_str=date,
+        min_severity=min_severity,
+    )
+    return _tool_response(
+        items,
+        f"Filtered to {len(items)} cities.",
+        "filter",
+        query=query,
+        category=category,
+        sort_by=sort_by,
+        pollutant=pollutant,
+        date=date,
+        min_severity=min_severity,
     )
 
 
