@@ -83,17 +83,27 @@ def main() -> int:
         )
         for event in fetch_events:
             result = event.get("result", {})
-            text_blob = ""
-            for block in result.get("content") or []:
-                if block.get("type") == "text":
-                    text_blob = block.get("text") or ""
-            payload = json.loads(text_blob) if text_blob.startswith("{") else result
-            structured = payload.get("structuredContent") or {}
+            structured = result.get("structuredContent") or {}
             items = structured.get("items") or []
+            if not items:
+                text_blob = ""
+                for block in result.get("content") or []:
+                    if block.get("type") == "text":
+                        text_blob = block.get("text") or ""
+                if text_blob.strip().startswith("{"):
+                    print(
+                        "FAIL: structuredContent nested inside content.text JSON. "
+                        "Restart server with CallToolResult-based server.py.",
+                        file=sys.stderr,
+                    )
+                    return 1
             print(
                 f"fetch_data returned {len(items)} item(s); "
                 f"first: {items[0]['name'] if items else 'n/a'}"
             )
+            if not structured:
+                print("FAIL: missing root structuredContent on tools/call", file=sys.stderr)
+                return 1
 
     return 0
 

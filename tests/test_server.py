@@ -106,6 +106,16 @@ async def test_call_tool_wrapper_returns_call_tool_result():
 
 
 @pytest.mark.asyncio
+async def test_tool_content_is_narration_not_nested_json():
+    """Athena needs structuredContent at result root; dict returns embed it in content.text."""
+    result = await fetch_data(query="alpha", limit=3)
+    narration = result.content[0].text
+    assert not narration.strip().startswith("{")
+    assert "structuredContent" not in narration
+    assert result.structuredContent["items"]
+
+
+@pytest.mark.asyncio
 async def test_read_resource_returns_skybridge_html():
     contents = await mcp.read_resource(OUTPUT_TEMPLATE)
     assert len(contents) == 1
