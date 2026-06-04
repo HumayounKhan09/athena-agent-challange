@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import date
+from datetime import date, timedelta
 from typing import Any
 
 import httpx
@@ -129,6 +129,62 @@ def _today_iso() -> str:
     return date.today().isoformat()
 
 
+def _resolve_item_date(date_str: str) -> str:
+    """Normalize tool date args (today, ISO) for API and mock filtering."""
+    raw = date_str.strip()
+    if not raw:
+        return _today_iso()
+    lowered = raw.lower()
+    if lowered in ("today", "now"):
+        return _today_iso()
+    if lowered == "yesterday":
+        return (date.today() - timedelta(days=1)).isoformat()
+    try:
+        return date.fromisoformat(raw).isoformat()
+    except ValueError:
+        return _today_iso()
+
+
+def _hourly_date_key(time_value: str) -> str:
+    """Extract YYYY-MM-DD from Open-Meteo hourly time strings."""
+    return time_value[:10] if len(time_value) >= 10 else time_value
+
+
+def _daily_averages_by_date(
+    hourly: dict[str, Any],
+    pollutant: str,
+) -> dict[str, float]:
+    """Build per-day averages from aligned hourly time and pollutant series."""
+    times = hourly.get("time") or []
+    values = hourly.get(pollutant) or []
+    if not times or not values:
+        return {}
+    by_date: dict[str, list[float]] = {}
+    for time_value, value in zip(times, values):
+        if value is None:
+            continue
+        day_key = _hourly_date_key(str(time_value))
+        by_date.setdefault(day_key, []).append(float(value))
+    return {day_key: sum(nums) / len(nums) for day_key, nums in by_date.items()}
+
+
+def _pick_daily_average(
+    averages_by_date: dict[str, float],
+    target_date: str,
+) -> tuple[float | None, str | None, bool]:
+    """Return average for target_date, else latest day on or before target, else latest overall."""
+    if target_date in averages_by_date:
+        return averages_by_date[target_date], target_date, False
+    prior_dates = sorted(d for d in averages_by_date if d <= target_date)
+    if prior_dates:
+        fallback_date = prior_dates[-1]
+        return averages_by_date[fallback_date], fallback_date, True
+    if averages_by_date:
+        fallback_date = max(averages_by_date)
+        return averages_by_date[fallback_date], fallback_date, True
+    return None, None, False
+
+
 def _normalize_pollutant(pollutant: str) -> str:
     key = pollutant.strip().lower().replace(".", "").replace(" ", "_")
     aliases = {
@@ -226,6 +282,50 @@ def _average_hourly(values: list[float | None]) -> float | None:
     return sum(nums) / len(nums)
 
 
+def _open_meteo_fetch_params(meta: dict[str, Any], pollutant: str) -> dict[str, Any]:
+    """Request a local-time window so partial or missing single-day slices still resolve."""
+    return {
+        "latitude": meta["latitude"],
+        "longitude": meta["longitude"],
+        "hourly": pollutant,
+        "timezone": "auto",
+        "domains": "auto",
+        "past_days": 2,
+        "forecast_days": 5,
+    }
+
+
+def _reading_from_hourly(
+    *,
+    city_key: str,
+    meta: dict[str, Any],
+    pollutant: str,
+    target_date: str,
+    hourly: dict[str, Any],
+) -> dict[str, Any] | None:
+    averages_by_date = _daily_averages_by_date(hourly, pollutant)
+    avg, used_date, used_fallback = _pick_daily_average(averages_by_date, target_date)
+    if avg is None or used_date is None:
+        return None
+    band = severity_for_value(pollutant, avg)
+    description = _build_description(pollutant, avg, band)
+    if used_fallback and used_date != target_date:
+        description = (
+            f"{description} (No data for {target_date}; showing {used_date} instead.)"
+        )
+    return shape_item(
+        {
+            "city_key": city_key,
+            "name": meta["name"],
+            "date": used_date,
+            "pollutant": pollutant,
+            "value": round(avg, 1),
+            "category": band,
+            "description": description,
+        }
+    )
+
+
 async def _fetch_city_reading(
     client: httpx.AsyncClient,
     city_key: str,
@@ -234,32 +334,24 @@ async def _fetch_city_reading(
 ) -> dict[str, Any] | None:
     meta = CITIES[city_key]
     url = f"{API_BASE.rstrip('/')}/v1/air-quality"
-    params = {
-        "latitude": meta["latitude"],
-        "longitude": meta["longitude"],
-        "hourly": pollutant,
-        "start_date": item_date,
-        "end_date": item_date,
-        "timezone": "auto",
-    }
-    response = await client.get(url, params=params, headers=_auth_headers())
+    response = await client.get(
+        url,
+        params=_open_meteo_fetch_params(meta, pollutant),
+        headers=_auth_headers(),
+    )
     response.raise_for_status()
     data = response.json()
-    hourly = data.get("hourly", {})
-    values = hourly.get(pollutant, [])
-    avg = _average_hourly(values)
-    if avg is None:
+    if data.get("error"):
         return None
-    band = severity_for_value(pollutant, avg)
-    return shape_item(
-        {
-            "city_key": city_key,
-            "name": meta["name"],
-            "date": item_date,
-            "pollutant": pollutant,
-            "value": round(avg, 1),
-            "category": band,
-        }
+    hourly = data.get("hourly", {})
+    if not hourly.get("time"):
+        return None
+    return _reading_from_hourly(
+        city_key=city_key,
+        meta=meta,
+        pollutant=pollutant,
+        target_date=item_date,
+        hourly=hourly,
     )
 
 
@@ -277,24 +369,34 @@ def _filter_mock_items(
     date_str: str = "",
     min_severity: str = "",
     limit: int | None = None,
+    *,
+    strict_date: bool = False,
 ) -> list[dict[str, Any]]:
     pollutant = _normalize_pollutant(pollutant)
     matched = match_cities(query)
     allowed_keys = set(matched) if matched else set(DEFAULT_CITY_KEYS)
-    results: list[dict[str, Any]] = []
-    for item in MOCK_ITEMS:
-        if _normalize_pollutant(str(item.get("pollutant", "pm2_5"))) != pollutant:
-            continue
-        city_key = _city_key_from_name(str(item.get("name", "")))
-        if city_key not in allowed_keys:
-            continue
-        if date_str and item.get("date") != date_str:
-            continue
-        if category and item.get("category") != category:
-            continue
-        if not _meets_min_severity(str(item.get("category", "")), min_severity):
-            continue
-        results.append(dict(item))
+    resolved_date = _resolve_item_date(date_str) if date_str.strip() else ""
+
+    def _collect(require_date: bool) -> list[dict[str, Any]]:
+        collected: list[dict[str, Any]] = []
+        for item in MOCK_ITEMS:
+            if _normalize_pollutant(str(item.get("pollutant", "pm2_5"))) != pollutant:
+                continue
+            city_key = _city_key_from_name(str(item.get("name", "")))
+            if city_key not in allowed_keys:
+                continue
+            if require_date and resolved_date and item.get("date") != resolved_date:
+                continue
+            if category and item.get("category") != category:
+                continue
+            if not _meets_min_severity(str(item.get("category", "")), min_severity):
+                continue
+            collected.append(dict(item))
+        return collected
+
+    results = _collect(require_date=strict_date and bool(resolved_date))
+    if not results and resolved_date and not strict_date:
+        results = _collect(require_date=False)
     if limit is not None:
         results = results[:limit]
     return results
@@ -319,11 +421,18 @@ async def fetch_items(
 ) -> list[dict[str, Any]]:
     """Fetch air quality readings for cities matching query."""
     pollutant = _normalize_pollutant(pollutant)
-    item_date = date_str.strip() or _today_iso()
+    item_date = _resolve_item_date(date_str)
+    strict_date = bool(date_str.strip())
     city_keys = _resolve_city_keys(query, limit)
 
     if _uses_mock_api():
-        return _filter_mock_items(query=query, pollutant=pollutant, date_str=item_date, limit=limit)
+        return _filter_mock_items(
+            query=query,
+            pollutant=pollutant,
+            date_str=date_str,
+            limit=limit,
+            strict_date=strict_date,
+        )
 
     async with httpx.AsyncClient(timeout=15.0) as client:
         readings: list[dict[str, Any]] = []
@@ -332,7 +441,7 @@ async def fetch_items(
                 reading = await _fetch_city_reading(client, city_key, pollutant, item_date)
                 if reading:
                     readings.append(reading)
-            except httpx.HTTPError:  # includes timeouts and HTTP status errors
+            except httpx.HTTPError:
                 continue
     return readings[:limit]
 
@@ -347,7 +456,8 @@ async def filter_items(
 ) -> list[dict[str, Any]]:
     """Re-fetch or filter readings by pollutant, date, severity band, and sort."""
     pollutant = _normalize_pollutant(pollutant)
-    item_date = date_str.strip() or _today_iso()
+    item_date = _resolve_item_date(date_str)
+    strict_date = bool(date_str.strip())
     min_severity = min_severity.strip().lower()
 
     if _uses_mock_api():
@@ -355,8 +465,9 @@ async def filter_items(
             query=query,
             category=category,
             pollutant=pollutant,
-            date_str=item_date,
+            date_str=date_str,
             min_severity=min_severity,
+            strict_date=strict_date,
         )
     else:
         items = await fetch_items(query=query, limit=20, pollutant=pollutant, date_str=item_date)

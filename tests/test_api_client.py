@@ -7,6 +7,9 @@ import pytest
 
 import services.api_client as api_client
 from services.api_client import (
+    _daily_averages_by_date,
+    _pick_daily_average,
+    _resolve_item_date,
     fetch_items,
     filter_items,
     match_cities,
@@ -60,7 +63,22 @@ async def test_filter_items_sort_by_value_desc():
 
 def test_match_cities():
     assert "london" in match_cities("Compare London and Delhi")
+    assert "delhi" in match_cities("Compare PM2.5 in London and Delhi today")
     assert "delhi" in match_cities("Delhi air quality")
+
+
+def test_resolve_item_date_today():
+    assert _resolve_item_date("today") == api_client._today_iso()
+    assert _resolve_item_date("  2026-06-04  ") == "2026-06-04"
+    assert _resolve_item_date("not-a-date") == api_client._today_iso()
+
+
+def test_pick_daily_average_fallback():
+    averages = {"2026-06-02": 10.0, "2026-06-03": 12.0}
+    avg, used, fallback = _pick_daily_average(averages, "2026-06-04")
+    assert fallback is True
+    assert used == "2026-06-03"
+    assert avg == 12.0
 
 
 def test_severity_for_pm25():
@@ -94,10 +112,16 @@ async def test_fetch_items_open_meteo_success(monkeypatch):
 
     async def handler(request: httpx.Request) -> httpx.Response:
         assert "air-quality" in str(request.url)
+        assert "past_days" in str(request.url)
         return httpx.Response(
             200,
             json={
                 "hourly": {
+                    "time": [
+                        "2026-06-04T00:00",
+                        "2026-06-04T01:00",
+                        "2026-06-04T02:00",
+                    ],
                     "pm2_5": [12.0, 14.0, 16.0],
                 }
             },
@@ -151,3 +175,70 @@ async def test_fetch_items_real_api_timeout_returns_empty(monkeypatch):
 
     items = await fetch_items(query="london", limit=5)
     assert items == []
+
+
+@pytest.mark.asyncio
+async def test_fetch_items_open_meteo_date_today(monkeypatch):
+    monkeypatch.setattr(api_client, "API_BASE", "https://air-quality.api.open-meteo.com")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "hourly": {
+                    "time": ["2026-06-04T10:00", "2026-06-04T11:00"],
+                    "pm2_5": [20.0, 22.0],
+                }
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(api_client.httpx, "AsyncClient", client_factory)
+    items = await fetch_items(query="london delhi", limit=5, date_str="today")
+    assert len(items) == 2
+
+
+@pytest.mark.asyncio
+async def test_fetch_items_open_meteo_fallback_previous_day(monkeypatch):
+    monkeypatch.setattr(api_client, "API_BASE", "https://air-quality.api.open-meteo.com")
+
+    async def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(
+            200,
+            json={
+                "hourly": {
+                    "time": ["2026-06-03T12:00", "2026-06-03T13:00"],
+                    "pm2_5": [8.0, 10.0],
+                }
+            },
+        )
+
+    transport = httpx.MockTransport(handler)
+    original_client = httpx.AsyncClient
+
+    def client_factory(*args, **kwargs):
+        kwargs["transport"] = transport
+        return original_client(*args, **kwargs)
+
+    monkeypatch.setattr(api_client.httpx, "AsyncClient", client_factory)
+    items = await fetch_items(query="london", limit=5, date_str="2026-06-04")
+    assert len(items) == 1
+    assert items[0]["date"] == "2026-06-03"
+    assert "No data for 2026-06-04" in items[0]["description"]
+
+
+def test_daily_averages_by_date_groups_hours():
+    hourly = {
+        "time": ["2026-06-04T00:00", "2026-06-04T01:00", "2026-06-03T23:00"],
+        "pm2_5": [10.0, 14.0, 30.0],
+    }
+    assert _daily_averages_by_date(hourly, "pm2_5") == {
+        "2026-06-04": 12.0,
+        "2026-06-03": 30.0,
+    }

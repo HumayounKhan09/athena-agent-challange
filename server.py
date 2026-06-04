@@ -19,7 +19,7 @@ from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
 from config.tool_references import TOOLS, build_description, get_direct_tool_names
-from services.api_client import filter_items, fetch_items, match_cities
+from services.api_client import _resolve_item_date, filter_items, fetch_items, match_cities
 
 
 def _transport_security_settings() -> TransportSecuritySettings | None:
@@ -112,22 +112,37 @@ async def fetch_data(
     date: str = "",
 ) -> CallToolResult:
     """Fetch air quality readings from Open-Meteo for cities matching the query."""
+    requested_date = _resolve_item_date(date)
     items = await fetch_items(query=query, limit=limit, pollutant=pollutant, date_str=date)
     cities = match_cities(query) or []
     pollutant_label = pollutant or "pm2_5"
-    item_date = date or (items[0]["date"] if items else "")
+    used_dates = sorted({str(item.get("date", "")) for item in items if item.get("date")})
+    item_date = used_dates[0] if len(used_dates) == 1 else (used_dates[-1] if used_dates else requested_date)
     bands = {}
     for item in items:
         bands[item.get("category", "unknown")] = bands.get(item.get("category", "unknown"), 0) + 1
     summary = ", ".join(f"{count} {band}" for band, count in sorted(bands.items())) or "no readings"
+    if not items:
+        narration = (
+            f"No {pollutant_label} readings for {len(cities) or 'default'} cities on {requested_date}. "
+            "Open-Meteo may not have data yet for that date; try an earlier date or another pollutant."
+        )
+    elif used_dates and (len(used_dates) > 1 or used_dates[0] != requested_date):
+        narration = (
+            f"Compared {pollutant_label} for {len(items)} cities "
+            f"(requested {requested_date}, data from {', '.join(used_dates)}): {summary}."
+        )
+    else:
+        narration = f"Compared {pollutant_label} for {len(items)} cities on {item_date}: {summary}."
     return _tool_response(
         items,
-        f"Compared {pollutant_label} for {len(items)} cities on {item_date}: {summary}.",
+        narration,
         "fetch",
         query=query,
         total=len(items),
         pollutant=pollutant_label,
         date=item_date,
+        requested_date=requested_date,
         cities_queried=cities,
     )
 
