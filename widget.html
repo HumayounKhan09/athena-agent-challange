@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Challenge Widget</title>
+  <style>
+    :root { color: #0b0b0f; font-family: "Inter", system-ui, sans-serif; }
+    html, body { width: 100%; min-height: 100%; box-sizing: border-box; margin: 0; padding: 0; }
+    body { padding: 16px; background: #f6f8fb; }
+
+    #header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 12px;
+      gap: 12px;
+    }
+
+    #count-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 4px 10px;
+      border-radius: 999px;
+      background: #e8ecff;
+      color: #111bf5;
+      font-size: 12px;
+      font-weight: 600;
+      white-space: nowrap;
+    }
+
+    #controls {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 16px;
+      flex-wrap: wrap;
+    }
+
+    #controls input,
+    #controls select {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px solid #cad3e0;
+      font-size: 14px;
+      flex: 1;
+      min-width: 120px;
+      background: white;
+    }
+
+    #controls button {
+      padding: 8px 16px;
+      border-radius: 8px;
+      border: none;
+      background: #111bf5;
+      color: white;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    #controls button:disabled {
+      opacity: 0.6;
+      cursor: not-allowed;
+    }
+
+    #layout {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      position: relative;
+    }
+
+    #results {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .item-card {
+      background: white;
+      border-radius: 12px;
+      padding: 12px 16px;
+      border: 1px solid #e2e8f0;
+      cursor: pointer;
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+
+    .item-card:hover,
+    .item-card.selected {
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+      border-color: #111bf5;
+    }
+
+    .item-card h3 { margin: 0 0 4px; font-size: 15px; }
+    .item-card p { margin: 0; font-size: 13px; color: #6c768a; }
+    .item-card .meta {
+      margin-top: 8px;
+      font-size: 11px;
+      color: #94a3b8;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+    }
+
+    #detail-panel {
+      position: fixed;
+      top: 0;
+      right: 0;
+      width: min(360px, 100%);
+      height: 100%;
+      background: white;
+      border-left: 1px solid #e2e8f0;
+      box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
+      padding: 20px;
+      transform: translateX(100%);
+      transition: transform 0.2s ease;
+      z-index: 10;
+      overflow-y: auto;
+    }
+
+    #detail-panel.open { transform: translateX(0); }
+
+    #detail-panel h2 {
+      margin: 0 0 8px;
+      font-size: 18px;
+      padding-right: 32px;
+    }
+
+    #detail-panel p {
+      margin: 0 0 12px;
+      color: #475569;
+      line-height: 1.5;
+    }
+
+    #detail-close {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+      border: none;
+      background: #f1f5f9;
+      border-radius: 8px;
+      width: 32px;
+      height: 32px;
+      cursor: pointer;
+      font-size: 18px;
+      line-height: 1;
+    }
+
+    #status {
+      text-align: center;
+      color: #6c768a;
+      padding: 32px 0;
+      font-size: 14px;
+    }
+
+    .empty-state {
+      border: 1px dashed #cbd5e1;
+      border-radius: 12px;
+      padding: 24px;
+      background: #fff;
+      text-align: center;
+    }
+
+    .empty-state strong {
+      display: block;
+      margin-bottom: 8px;
+      color: #0f172a;
+    }
+  </style>
+</head>
+<body>
+  <div id="header">
+    <div id="count-badge">0 results</div>
+  </div>
+
+  <div id="controls">
+    <input id="search-input" type="text" placeholder="Search…" />
+    <select id="sort-select">
+      <option value="name">Sort: name</option>
+      <option value="date">Sort: date</option>
+      <option value="category">Sort: category</option>
+    </select>
+    <select id="sort-direction">
+      <option value="asc">Ascending</option>
+      <option value="desc">Descending</option>
+    </select>
+    <button id="search-btn" type="button">Search</button>
+  </div>
+
+  <div id="status">Enter a search term above.</div>
+
+  <div id="layout">
+    <div id="results"></div>
+  </div>
+
+  <aside id="detail-panel" aria-hidden="true">
+    <button id="detail-close" type="button" aria-label="Close detail panel">&times;</button>
+    <h2 id="detail-title"></h2>
+    <p id="detail-description"></p>
+    <p id="detail-meta"></p>
+  </aside>
+
+  <script type="module">
+    let items = [...(window.openai?.toolOutput?.items ?? [])];
+    let isLoading = false;
+    let selectedItemId = window.openai?.widgetState?.selectedItemId ?? null;
+    let sortKey = window.openai?.widgetState?.sortKey ?? "name";
+    let sortDirection = window.openai?.widgetState?.sortDirection ?? "asc";
+    let lastQuery = window.openai?.widgetState?.lastQuery ?? "";
+
+    const resultsEl = document.getElementById("results");
+    const statusEl = document.getElementById("status");
+    const searchInput = document.getElementById("search-input");
+    const sortSelect = document.getElementById("sort-select");
+    const sortDirectionSelect = document.getElementById("sort-direction");
+    const searchBtn = document.getElementById("search-btn");
+    const countBadge = document.getElementById("count-badge");
+    const detailPanel = document.getElementById("detail-panel");
+    const detailTitle = document.getElementById("detail-title");
+    const detailDescription = document.getElementById("detail-description");
+    const detailMeta = document.getElementById("detail-meta");
+    const detailClose = document.getElementById("detail-close");
+
+    searchInput.value = lastQuery;
+    sortSelect.value = sortKey;
+    sortDirectionSelect.value = sortDirection;
+
+    const persistState = () => {
+      window.openai?.setWidgetState?.({
+        items,
+        lastQuery: searchInput.value,
+        selectedItemId,
+        sortKey,
+        sortDirection,
+      });
+    };
+
+    const updateCountBadge = () => {
+      const label = items.length === 1 ? "1 result" : `${items.length} results`;
+      countBadge.textContent = label;
+    };
+
+    const sortItems = () => {
+      sortKey = sortSelect.value;
+      sortDirection = sortDirectionSelect.value;
+      items = [...items].sort((a, b) => {
+        const left = String(a[sortKey] ?? "");
+        const right = String(b[sortKey] ?? "");
+        const cmp = left.localeCompare(right);
+        return sortDirection === "desc" ? -cmp : cmp;
+      });
+    };
+
+    const closeDetailPanel = () => {
+      selectedItemId = null;
+      detailPanel.classList.remove("open");
+      detailPanel.setAttribute("aria-hidden", "true");
+      persistState();
+      render();
+    };
+
+    const openDetailPanel = (item) => {
+      selectedItemId = item.id;
+      detailTitle.textContent = item.name ?? item.id ?? "Item";
+      detailDescription.textContent = item.description ?? "No description available.";
+      detailMeta.textContent = [item.category, item.date].filter(Boolean).join(" · ");
+      detailPanel.classList.add("open");
+      detailPanel.setAttribute("aria-hidden", "false");
+      persistState();
+      render();
+    };
+
+    const render = () => {
+      resultsEl.innerHTML = "";
+      updateCountBadge();
+
+      if (isLoading) {
+        statusEl.textContent = "Loading…";
+        statusEl.style.display = "block";
+        searchBtn.disabled = true;
+        return;
+      }
+
+      searchBtn.disabled = false;
+
+      if (items.length === 0) {
+        statusEl.innerHTML = `
+          <div class="empty-state">
+            <strong>No results found</strong>
+            <span>Try a different search term or broaden your query.</span>
+          </div>
+        `;
+        statusEl.style.display = "block";
+        persistState();
+        return;
+      }
+
+      statusEl.style.display = "none";
+
+      items.forEach((item) => {
+        const card = document.createElement("div");
+        card.className = "item-card";
+        if (item.id === selectedItemId) {
+          card.classList.add("selected");
+        }
+        card.innerHTML = `
+          <h3>${item.name ?? item.id ?? "Untitled"}</h3>
+          <p>${item.description ?? ""}</p>
+          <div class="meta">${[item.category, item.date].filter(Boolean).join(" · ")}</div>
+        `;
+        card.addEventListener("click", () => openDetailPanel(item));
+        resultsEl.appendChild(card);
+      });
+
+      persistState();
+    };
+
+    const updateFromResponse = (response) => {
+      if (response?.structuredContent?.items) {
+        items = response.structuredContent.items;
+        isLoading = false;
+        sortItems();
+        render();
+      }
+    };
+
+    window.addEventListener(
+      "openai:set_globals",
+      (event) => {
+        const globals = event.detail?.globals;
+        if (globals?.toolOutput?.items) {
+          items = globals.toolOutput.items;
+          render();
+        }
+        if (globals?.widgetState) {
+          selectedItemId = globals.widgetState.selectedItemId ?? selectedItemId;
+          sortKey = globals.widgetState.sortKey ?? sortKey;
+          sortDirection = globals.widgetState.sortDirection ?? sortDirection;
+          sortSelect.value = sortKey;
+          sortDirectionSelect.value = sortDirection;
+        }
+      },
+      { passive: true }
+    );
+
+    const callTool = async (name, payload) => {
+      if (!window.openai?.callTool) {
+        console.log("[dev] callTool", name, payload);
+        return;
+      }
+      isLoading = true;
+      render();
+      try {
+        const response = await window.openai.callTool(name, payload);
+        updateFromResponse(response);
+      } catch (err) {
+        isLoading = false;
+        statusEl.textContent = `Error: ${err.message}`;
+        statusEl.style.display = "block";
+        render();
+      }
+    };
+
+    const runSearch = async () => {
+      const query = searchInput.value.trim();
+      if (!query) return;
+      lastQuery = query;
+      await callTool("fetch_data", { query, limit: 20 });
+    };
+
+    searchBtn.addEventListener("click", runSearch);
+
+    searchInput.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        runSearch();
+      }
+    });
+
+    sortSelect.addEventListener("change", () => {
+      sortItems();
+      render();
+    });
+
+    sortDirectionSelect.addEventListener("change", () => {
+      sortItems();
+      render();
+    });
+
+    detailClose.addEventListener("click", closeDetailPanel);
+
+    sortItems();
+    render();
+  </script>
+</body>
+</html>
