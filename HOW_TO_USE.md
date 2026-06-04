@@ -207,6 +207,7 @@ Skipping refresh often causes missing tools, old descriptions, or a broken widge
 | Stale tool list or widget | Settings → Connectors → **Refresh** |
 | ngrok command not found | `export PATH="$(pwd)/.local/bin:$PATH"` or install via Homebrew |
 | CORS / MCP session errors | Confirm server logs show port 8000; use HTTPS ngrok URL, not `http://localhost` in Athena |
+| `POST /mcp` **421**, `Invalid Host header: …ngrok…` | Restart server after pulling latest `server.py` (FastMCP must use `host="0.0.0.0"`). Or set `MCP_ALLOWED_HOSTS=your-subdomain.ngrok-free.dev` before `python server.py` |
 | Always mock data | `API_BASE` still contains `example.com` — set a real `API_BASE` (and `API_KEY` if needed) for Phase 6 |
 | Real API errors | Update `services/api_client.py` endpoints and response shaping |
 

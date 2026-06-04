@@ -10,6 +10,7 @@ import os
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
+from mcp.server.transport_security import TransportSecuritySettings
 from starlette.applications import Starlette
 from starlette.middleware import Middleware
 from starlette.requests import Request
@@ -20,8 +21,29 @@ from starlette.types import ASGIApp, Message, Receive, Scope, Send
 from config.tool_references import TOOLS, build_description, get_direct_tool_names
 from services.api_client import filter_items, fetch_items
 
-# ── Server init ──────────────────────────────────────────────────────────────
-mcp = FastMCP(name="challenge-agent")
+
+def _transport_security_settings() -> TransportSecuritySettings | None:
+    """DNS rebinding allowlist. FastMCP defaults host=127.0.0.1 and only allows localhost."""
+    extra_hosts = [h.strip() for h in os.environ.get("MCP_ALLOWED_HOSTS", "").split(",") if h.strip()]
+    if extra_hosts:
+        return TransportSecuritySettings(
+            enable_dns_rebinding_protection=True,
+            allowed_hosts=["127.0.0.1:*", "localhost:*", "[::1]:*"] + extra_hosts,
+            allowed_origins=[
+                "http://127.0.0.1:*",
+                "http://localhost:*",
+                "http://[::1]:*",
+            ],
+        )
+    return None
+
+
+# host=0.0.0.0 avoids FastMCP auto-enabling localhost-only DNS rebinding (breaks ngrok POST /mcp).
+mcp = FastMCP(
+    name="challenge-agent",
+    host="0.0.0.0",
+    transport_security=_transport_security_settings(),
+)
 
 # ── Load widget HTML at startup (not on every request) ───────────────────────
 _WIDGET_PATH = Path(__file__).resolve().parent.joinpath("widget.html")
