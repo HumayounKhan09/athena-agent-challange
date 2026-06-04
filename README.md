@@ -2,6 +2,8 @@
 
 Python MCP server with an interactive Skybridge widget for the Athena AI Challenge. Topic is **TBD** — the server uses mock data until a real public API is assigned (Phase 6).
 
+For Athena platform questions, use the **athena-knowledge** skill (`.cursor/skills/athena-knowledge/SKILL.md`).
+
 ## Stack
 
 - **Python 3.10+** (3.13 recommended)
