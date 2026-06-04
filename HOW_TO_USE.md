@@ -8,6 +8,8 @@ Step-by-step guide to run, test, expose, and connect this challenge MCP server t
 
 ## Quick start
 
+**Use the project venv** — run `source .venv/bin/activate` or `./run.sh`; using conda `(base)` Python without the venv will fail with `ModuleNotFoundError: No module named 'mcp'`.
+
 From the repository root:
 
 ```bash
