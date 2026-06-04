@@ -5,6 +5,7 @@ Topic TBD — uses mock data until API_BASE is configured.
 
 from __future__ import annotations
 
+import json
 import os
 from pathlib import Path
 
@@ -16,15 +17,17 @@ from starlette.responses import PlainTextResponse, Response
 from starlette.routing import Route
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
+from config.tool_references import TOOLS, build_description, get_direct_tool_names
 from services.api_client import filter_items, fetch_items
 
 # ── Server init ──────────────────────────────────────────────────────────────
 mcp = FastMCP(name="challenge-agent")
 
 # ── Load widget HTML at startup (not on every request) ───────────────────────
-WIDGET_HTML = Path(__file__).resolve().parent.joinpath("widget.html").read_text(
-    encoding="utf-8"
-)
+_WIDGET_PATH = Path(__file__).resolve().parent.joinpath("widget.html")
+_RAW_WIDGET_HTML = _WIDGET_PATH.read_text(encoding="utf-8")
+_TOOL_REFS_JSON = json.dumps(get_direct_tool_names())
+WIDGET_HTML = _RAW_WIDGET_HTML.replace("__TOOL_REFS_JSON__", _TOOL_REFS_JSON)
 
 OUTPUT_TEMPLATE = "ui://widget/main.html"
 
@@ -61,26 +64,27 @@ def _tool_response(items: list[dict], narration: str, **extra) -> dict:
     }
 
 
+def _tool_meta(tool_key: str) -> dict:
+    tool = TOOLS[tool_key]
+    return {
+        "openai/outputTemplate": OUTPUT_TEMPLATE,
+        "openai/toolInvocation/invoking": tool["invoking"],
+        "openai/toolInvocation/invoked": tool["invoked"],
+        "openai/widgetAccessible": True,
+    }
+
+
 # ── Tool 1: Primary fetch tool ────────────────────────────────────────────────
 @mcp.tool(
-    name="fetch_data",
-    title="Fetch Data",
-    description=(
-        "Use this when the user asks about data or wants to search for items. "
-        "Returns matching records as an interactive widget. "
-        "Do not use for filtering already-loaded results — use filter_data instead."
-    ),
+    name=TOOLS["fetch"]["name"],
+    title=TOOLS["fetch"]["title"],
+    description=build_description("fetch"),
     annotations={
         "readOnlyHint": True,
         "destructiveHint": False,
         "openWorldHint": False,
     },
-    meta={
-        "openai/outputTemplate": OUTPUT_TEMPLATE,
-        "openai/toolInvocation/invoking": "Fetching data…",
-        "openai/toolInvocation/invoked": "Data loaded",
-        "openai/widgetAccessible": True,
-    },
+    meta=_tool_meta("fetch"),
 )
 async def fetch_data(query: str, limit: int = 20) -> dict:
     """Fetch items from the public API (mock when API_BASE is a placeholder)."""
@@ -95,23 +99,15 @@ async def fetch_data(query: str, limit: int = 20) -> dict:
 
 # ── Tool 2: Filter / detail tool ─────────────────────────────────────────────
 @mcp.tool(
-    name="filter_data",
-    title="Filter Data",
-    description=(
-        "Use this when the user wants to filter, sort, or narrow down "
-        "results already shown in the widget. Requires a previous fetch_data call first."
-    ),
+    name=TOOLS["filter"]["name"],
+    title=TOOLS["filter"]["title"],
+    description=build_description("filter"),
     annotations={
         "readOnlyHint": True,
         "destructiveHint": False,
         "openWorldHint": False,
     },
-    meta={
-        "openai/outputTemplate": OUTPUT_TEMPLATE,
-        "openai/toolInvocation/invoking": "Filtering…",
-        "openai/toolInvocation/invoked": "Filtered",
-        "openai/widgetAccessible": True,
-    },
+    meta=_tool_meta("filter"),
 )
 async def filter_data(
     query: str,
@@ -172,16 +168,20 @@ class MCPAppWrapper:
             await response(scope, receive, send)
             return
 
-        inner_scope = dict(scope)
-        path = scope.get("path", "")
-        if path.startswith("/mcp"):
-            remainder = path[4:] or "/"
-            inner_scope["path"] = remainder
-            inner_scope["root_path"] = scope.get("root_path", "") + "/mcp"
-        await self.app(inner_scope, receive, send)
+        if scope["type"] == "http" and scope.get("method") == "GET":
+            has_session = any(
+                name.lower() == b"mcp-session-id" for name, _ in scope.get("headers", [])
+            )
+            if not has_session:
+                response = PlainTextResponse("MCP endpoint ready", headers=CORS_HEADERS)
+                await response(scope, receive, send)
+                return
+
+        await self.app(scope, receive, send)
 
 
-MCP_ENDPOINT = MCPAppWrapper(mcp.streamable_http_app())
+MCP_HTTP_APP = mcp.streamable_http_app()
+MCP_ENDPOINT = MCPAppWrapper(MCP_HTTP_APP)
 MCP_METHODS = ["GET", "POST", "DELETE", "OPTIONS"]
 
 
@@ -196,6 +196,7 @@ def create_app() -> Starlette:
     app = Starlette(
         routes=routes,
         middleware=[Middleware(AlwaysCORSMiddleware)],
+        lifespan=MCP_HTTP_APP.router.lifespan_context,
     )
 
     return app

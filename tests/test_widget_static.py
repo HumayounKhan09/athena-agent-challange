@@ -2,12 +2,24 @@
 
 from __future__ import annotations
 
+import json
 import re
 
 import pytest
 
+from config.tool_references import get_direct_tool_names
 
-REQUIRED_IDS = ["controls", "status", "results", "search-input", "sort-select", "search-btn"]
+
+REQUIRED_IDS = [
+    "controls",
+    "status",
+    "results",
+    "search-input",
+    "category-filter",
+    "sort-select",
+    "search-btn",
+    "tool-refs",
+]
 
 
 def test_required_dom_ids(widget_html: str):
@@ -28,17 +40,35 @@ def test_openai_bridge_patterns(widget_html: str):
     assert "[dev] callTool" in widget_html
 
 
-def test_fetch_data_call_payload(widget_html: str):
+def test_tool_refs_placeholder_in_source(widget_html: str):
+    assert "__TOOL_REFS_JSON__" in widget_html
+    assert 'id="tool-refs"' in widget_html
+
+
+def test_fetch_uses_config_driven_tool_ref(widget_html_served: str):
+    refs = get_direct_tool_names()
+    assert json.dumps(refs) in widget_html_served
     assert re.search(
-        r'callTool\(\s*"fetch_data"\s*,\s*\{\s*query\s*,\s*limit:\s*20\s*\}\s*\)',
-        widget_html,
+        r"callTool\(\s*TOOL_REFS\.search\s*,\s*\{\s*query\s*,\s*limit:\s*20\s*\}\s*\)",
+        widget_html_served,
     )
 
 
-def test_client_side_sort_without_tool_call(widget_html: str):
-    assert "sortSelect.addEventListener" in widget_html
-    assert "sortItems()" in widget_html
-    assert 'callTool("filter_data"' not in widget_html
+def test_category_filter_calls_filter_tool(widget_html_served: str):
+    refs = get_direct_tool_names()
+    assert "category-filter" in widget_html_served
+    assert re.search(
+        r"callTool\(\s*TOOL_REFS\.filter\s*,",
+        widget_html_served,
+    )
+    assert refs["filter"] in widget_html_served
+
+
+def test_client_side_sort_without_filter_tool_call(widget_html_served: str):
+    assert "sortSelect.addEventListener" in widget_html_served
+    assert "sortItems()" in widget_html_served
+    sort_handler = widget_html_served.split("sortSelect.addEventListener", 1)[1]
+    assert "TOOL_REFS.filter" not in sort_handler.split("sortDirectionSelect.addEventListener", 1)[0]
 
 
 def test_loading_state(widget_html: str):

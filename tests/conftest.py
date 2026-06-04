@@ -19,6 +19,14 @@ def widget_html(project_root: Path) -> str:
 
 
 @pytest.fixture
+def widget_html_served() -> str:
+    """Widget HTML after server injects direct tool refs (production shape)."""
+    from server import WIDGET_HTML
+
+    return WIDGET_HTML
+
+
+@pytest.fixture
 async def app_client():
     """Async httpx client bound to the Starlette app (no live server)."""
     from server import create_app

@@ -61,6 +61,7 @@ Test modules:
 
 - `tests/test_server.py` — health, CORS, tools, widget resource
 - `tests/test_api_client.py` — mock + mocked HTTP paths
+- `tests/test_tool_references.py` — config descriptions and direct-ref map
 - `tests/test_widget_static.py` — widget bridge and DOM contracts
 
 ## Expose with ngrok
@@ -111,12 +112,26 @@ Stale connector metadata is a common cause of missing tools or broken widget ren
 ## Project layout
 
 ```text
-server.py              # FastMCP server, tools, resource, HTTP/CORS
-widget.html            # Interactive widget (Skybridge)
-services/api_client.py # API abstraction (mock or real HTTP)
-tests/                 # pytest suite
+server.py                  # FastMCP server, tools, resource, HTTP/CORS
+widget.html                # Interactive widget (Skybridge)
+config/tool_references.py  # Tool names, LLM descriptions, widget direct refs
+services/api_client.py     # API abstraction (mock or real HTTP)
+tests/                     # pytest suite
 requirements.txt
 ```
+
+## Tool references (`config/tool_references.py`)
+
+All MCP tool names, LLM descriptions, and widget **direct** tool mappings live in one file:
+
+| Mechanism | Where | Purpose |
+|-----------|--------|---------|
+| **Indirect** (LLM) | `indirect_triggers`, `negative_cases`, `direct_refs` → `build_description()` | Athena chooses tools from natural-language routing hints |
+| **Direct** (widget) | `get_direct_tool_names()` → injected into `widget.html` as `TOOL_REFS` | Search button and category dropdown call `callTool` with configured names |
+
+When the topic is assigned, edit `TOPIC_LABEL`, `TOPIC_KEYWORDS`, per-tool triggers/negatives, and `WIDGET_FILTER_CATEGORIES` as needed. Restart the server so descriptions and injected JSON reload, then refresh the Athena connector.
+
+Client-side **sort** stays in the widget (no tool call). **Category filter** uses the direct `filter` tool mapping; **search** uses the `search` mapping.
 
 ## Phase 6 — Topic assignment (later)
 
@@ -124,5 +139,5 @@ When the topic and public API are assigned:
 
 1. Set `API_BASE` (and `API_KEY` if required)
 2. Update endpoints and response shaping in `services/api_client.py`
-3. Refine tool descriptions and widget fields
+3. Adjust `config/tool_references.py` (topic placeholders, indirect/direct triggers, categories)
 4. Refresh the Athena connector and re-run the full test suite

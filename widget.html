@@ -170,8 +170,16 @@
     <div id="count-badge">0 results</div>
   </div>
 
+  <script id="tool-refs" type="application/json">__TOOL_REFS_JSON__</script>
+
   <div id="controls">
     <input id="search-input" type="text" placeholder="Search…" />
+    <select id="category-filter" aria-label="Filter by category">
+      <option value="">All categories</option>
+      <option value="general">General</option>
+      <option value="research">Research</option>
+      <option value="reports">Reports</option>
+    </select>
     <select id="sort-select">
       <option value="name">Sort: name</option>
       <option value="date">Sort: date</option>
@@ -198,6 +206,10 @@
   </aside>
 
   <script type="module">
+    const TOOL_REFS = JSON.parse(
+      document.getElementById("tool-refs").textContent.trim()
+    );
+
     let items = [...(window.openai?.toolOutput?.items ?? [])];
     let isLoading = false;
     let selectedItemId = window.openai?.widgetState?.selectedItemId ?? null;
@@ -208,6 +220,7 @@
     const resultsEl = document.getElementById("results");
     const statusEl = document.getElementById("status");
     const searchInput = document.getElementById("search-input");
+    const categoryFilter = document.getElementById("category-filter");
     const sortSelect = document.getElementById("sort-select");
     const sortDirectionSelect = document.getElementById("sort-direction");
     const searchBtn = document.getElementById("search-btn");
@@ -362,7 +375,16 @@
       const query = searchInput.value.trim();
       if (!query) return;
       lastQuery = query;
-      await callTool("fetch_data", { query, limit: 20 });
+      await callTool(TOOL_REFS.search, { query, limit: 20 });
+    };
+
+    const runCategoryFilter = async () => {
+      const category = categoryFilter.value;
+      await callTool(TOOL_REFS.filter, {
+        query: lastQuery,
+        category,
+        sort_by: sortKey,
+      });
     };
 
     searchBtn.addEventListener("click", runSearch);
@@ -373,6 +395,8 @@
         runSearch();
       }
     });
+
+    categoryFilter.addEventListener("change", runCategoryFilter);
 
     sortSelect.addEventListener("change", () => {
       sortItems();

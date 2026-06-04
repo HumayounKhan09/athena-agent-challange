@@ -6,6 +6,7 @@ import json
 
 import pytest
 
+from config.tool_references import TOOLS, get_direct_tool_names, get_tool_names
 from server import OUTPUT_TEMPLATE, WIDGET_HTML, fetch_data, filter_data, mcp, widget_resource
 
 
@@ -41,6 +42,8 @@ async def test_widget_loaded_at_startup():
     assert WIDGET_HTML
     assert "<!DOCTYPE html>" in WIDGET_HTML
     assert "window.openai" in WIDGET_HTML or "openai" in WIDGET_HTML
+    assert "__TOOL_REFS_JSON__" not in WIDGET_HTML
+    assert TOOLS["fetch"]["name"] in WIDGET_HTML
 
 
 @pytest.mark.asyncio
@@ -54,10 +57,19 @@ async def test_widget_resource_metadata():
 
 
 @pytest.mark.asyncio
+async def test_widget_injects_tool_refs_json():
+    import json
+
+    refs = get_direct_tool_names()
+    assert json.dumps(refs) in WIDGET_HTML
+    assert 'id="tool-refs"' in WIDGET_HTML
+
+
+@pytest.mark.asyncio
 async def test_tools_registered_with_metadata():
     tools = await mcp.list_tools()
     names = {tool.name for tool in tools}
-    assert names == {"fetch_data", "filter_data"}
+    assert names == get_tool_names()
 
     for tool in tools:
         assert tool.description.startswith("Use this when")
@@ -88,7 +100,7 @@ async def test_filter_data_returns_structured_content():
 
 @pytest.mark.asyncio
 async def test_call_tool_wrapper_returns_json_payload():
-    contents = await mcp.call_tool("fetch_data", {"query": "beta", "limit": 5})
+    contents = await mcp.call_tool(TOOLS["fetch"]["name"], {"query": "beta", "limit": 5})
     assert contents
     payload = json.loads(contents[0].text)
     assert payload["structuredContent"]["items"]
