@@ -8,7 +8,7 @@ import pytest
 
 import services.api_client as api_client
 from config.tool_references import TOOLS, get_direct_tool_names, get_tool_names
-from server import OUTPUT_TEMPLATE, WIDGET_HTML, fetch_data, filter_data, mcp, widget_resource
+from server import OUTPUT_TEMPLATE, WIDGET_HTML, WIDGET_RESOURCE_META, fetch_data, filter_data, mcp, widget_resource
 
 
 @pytest.mark.asyncio
@@ -55,6 +55,9 @@ async def test_widget_resource_metadata():
     assert len(resources) == 1
     assert str(resources[0].uri) == OUTPUT_TEMPLATE
     assert resources[0].mimeType == "text/html+skybridge"
+    assert resources[0].meta["ui"]["prefersBorder"] is True
+    assert resources[0].meta["openai/widgetDescription"]
+    assert resources[0].meta == WIDGET_RESOURCE_META
 
 
 @pytest.mark.asyncio
@@ -77,6 +80,7 @@ async def test_tools_registered_with_metadata():
         assert tool.annotations.readOnlyHint is True
         assert tool.annotations.destructiveHint is False
         assert tool.annotations.openWorldHint is True
+        assert tool.meta["ui"]["resourceUri"] == OUTPUT_TEMPLATE
         assert tool.meta["openai/outputTemplate"] == OUTPUT_TEMPLATE
         assert tool.meta["openai/widgetAccessible"] is True
         assert tool.meta["openai/toolInvocation/invoking"]
@@ -129,5 +133,7 @@ async def test_read_resource_returns_skybridge_html():
 @pytest.mark.asyncio
 async def test_tool_response_includes_invocation_meta():
     result = await fetch_data(query="london", limit=3)
+    assert result.meta["ui"]["resourceUri"] == OUTPUT_TEMPLATE
+    assert result.meta["openai/outputTemplate"] == OUTPUT_TEMPLATE
     assert result.meta["openai/toolInvocation/invoking"] == TOOLS["fetch"]["invoking"]
     assert result.meta["openai/toolInvocation/invoked"] == TOOLS["fetch"]["invoked"]

@@ -3,10 +3,59 @@
 <head>
   <meta charset="utf-8" />
   <title>Air Quality Comparison</title>
+  <script id="tool-refs" type="application/json">__TOOL_REFS_JSON__</script>
   <style>
-    :root { color: #0b0b0f; font-family: "Inter", system-ui, sans-serif; }
-    html, body { width: 100%; min-height: 100%; box-sizing: border-box; margin: 0; padding: 0; }
-    body { padding: 16px; background: #f6f8fb; }
+    :root {
+      color-scheme: light dark;
+      --color-text: #0b0b0f;
+      --color-text-secondary: #475569;
+      --color-text-tertiary: #64748b;
+      --color-surface: #ffffff;
+      --color-surface-elevated: #f8fafc;
+      --color-border: #e2e8f0;
+      --color-border-subtle: #cbd5e1;
+      --color-primary: #111bf5;
+      --color-primary-soft: #e8ecff;
+      --font-family: "Inter", system-ui, -apple-system, sans-serif;
+      --radius-md: 8px;
+      --radius-lg: 12px;
+      --radius-xl: 16px;
+      --shadow-card: 0 2px 8px rgba(0, 0, 0, 0.08);
+    }
+
+    html[data-theme="dark"],
+    :host([data-theme="dark"]) {
+      --color-text: #f8fafc;
+      --color-text-secondary: #cbd5e1;
+      --color-text-tertiary: #94a3b8;
+      --color-surface: #111827;
+      --color-surface-elevated: #1f2937;
+      --color-border: #334155;
+      --color-border-subtle: #475569;
+      --color-primary-soft: #1e293b;
+    }
+
+    html, body {
+      width: 100%;
+      min-height: 100%;
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      padding: 16px;
+      background: var(--color-surface-elevated);
+      color: var(--color-text);
+      font-family: var(--font-family);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    main {
+      width: 100%;
+      max-width: 720px;
+      margin: 0 auto;
+    }
 
     #header {
       display: flex;
@@ -27,8 +76,8 @@
       align-items: center;
       padding: 4px 10px;
       border-radius: 999px;
-      background: #e8ecff;
-      color: #111bf5;
+      background: var(--color-primary-soft);
+      color: var(--color-primary);
       font-size: 12px;
       font-weight: 600;
       white-space: nowrap;
@@ -44,19 +93,20 @@
     #controls input,
     #controls select {
       padding: 8px 12px;
-      border-radius: 8px;
-      border: 1px solid #cad3e0;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--color-border-subtle);
       font-size: 14px;
       flex: 1;
       min-width: 120px;
-      background: white;
+      background: var(--color-surface);
+      color: var(--color-text);
     }
 
     #controls button {
       padding: 8px 16px;
-      border-radius: 8px;
+      border-radius: var(--radius-md);
       border: none;
-      background: #111bf5;
+      background: var(--color-primary);
       color: white;
       font-weight: 600;
       cursor: pointer;
@@ -81,18 +131,18 @@
     }
 
     .item-card {
-      background: white;
-      border-radius: 12px;
+      background: var(--color-surface);
+      border-radius: var(--radius-lg);
       padding: 12px 16px;
-      border: 1px solid #e2e8f0;
+      border: 1px solid var(--color-border);
       cursor: pointer;
       transition: box-shadow 0.15s, border-color 0.15s;
     }
 
     .item-card:hover,
     .item-card.selected {
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
-      border-color: #111bf5;
+      box-shadow: var(--shadow-card);
+      border-color: var(--color-primary);
     }
 
     .item-card h3 {
@@ -119,7 +169,7 @@
 
     .bar-track {
       height: 8px;
-      background: #e2e8f0;
+      background: var(--color-border);
       border-radius: 4px;
       overflow: hidden;
       margin: 8px 0 4px;
@@ -139,13 +189,13 @@
     .item-card .meta {
       margin-top: 4px;
       font-size: 12px;
-      color: #64748b;
+      color: var(--color-text-tertiary);
     }
 
     .item-card .value-line {
       margin: 0;
       font-size: 13px;
-      color: #475569;
+      color: var(--color-text-secondary);
     }
 
     #detail-panel {
@@ -154,8 +204,8 @@
       right: 0;
       width: min(360px, 100%);
       height: 100%;
-      background: white;
-      border-left: 1px solid #e2e8f0;
+      background: var(--color-surface);
+      border-left: 1px solid var(--color-border);
       box-shadow: -8px 0 24px rgba(15, 23, 42, 0.12);
       padding: 20px;
       transform: translateX(100%);
@@ -174,7 +224,7 @@
 
     #detail-panel p {
       margin: 0 0 12px;
-      color: #475569;
+      color: var(--color-text-secondary);
       line-height: 1.5;
     }
 
@@ -183,73 +233,74 @@
       top: 16px;
       right: 16px;
       border: none;
-      background: #f1f5f9;
-      border-radius: 8px;
+      background: var(--color-surface-elevated);
+      border-radius: var(--radius-md);
       width: 32px;
       height: 32px;
       cursor: pointer;
       font-size: 18px;
       line-height: 1;
+      color: var(--color-text);
     }
 
     #status {
       text-align: center;
-      color: #6c768a;
+      color: var(--color-text-tertiary);
       padding: 32px 0;
       font-size: 14px;
     }
 
     .empty-state {
-      border: 1px dashed #cbd5e1;
-      border-radius: 12px;
+      border: 1px dashed var(--color-border-subtle);
+      border-radius: var(--radius-lg);
       padding: 24px;
-      background: #fff;
+      background: var(--color-surface);
       text-align: center;
     }
 
     .empty-state strong {
       display: block;
       margin-bottom: 8px;
-      color: #0f172a;
+      color: var(--color-text);
     }
   </style>
 </head>
 <body>
-  <div id="header">
-    <h1>Air Quality Comparison</h1>
-    <div id="count-badge">0 cities</div>
-  </div>
+  <main>
+    <div id="header">
+      <h1>Air Quality Comparison</h1>
+      <div id="count-badge">0 cities</div>
+    </div>
 
-  <script id="tool-refs" type="application/json">__TOOL_REFS_JSON__</script>
+    <div id="controls">
+      <input id="search-input" type="text" placeholder="Cities (e.g. London, Paris)…" />
+      <input id="date-input" type="date" aria-label="Date" />
+      <select id="category-filter" aria-label="Pollutant">
+        <option value="pm2_5">PM2.5</option>
+        <option value="pm10">PM10</option>
+        <option value="ozone">Ozone</option>
+      </select>
+      <select id="severity-filter" aria-label="Minimum severity">
+        <option value="">All severities</option>
+        <option value="good">Good+</option>
+        <option value="moderate">Moderate+</option>
+        <option value="unhealthy">Unhealthy+</option>
+        <option value="very_unhealthy">Very unhealthy only</option>
+      </select>
+      <select id="sort-select">
+        <option value="value">Sort: pollution (low)</option>
+        <option value="value_desc">Sort: pollution (high)</option>
+        <option value="name">Sort: city A–Z</option>
+      </select>
+      <button id="search-btn" type="button">Compare</button>
+    </div>
 
-  <div id="controls">
-    <input id="search-input" type="text" placeholder="Cities (e.g. London, Paris)…" />
-    <input id="date-input" type="date" aria-label="Date" />
-    <select id="category-filter" aria-label="Pollutant">
-      <option value="pm2_5">PM2.5</option>
-      <option value="pm10">PM10</option>
-      <option value="ozone">Ozone</option>
-    </select>
-    <select id="severity-filter" aria-label="Minimum severity">
-      <option value="">All severities</option>
-      <option value="good">Good+</option>
-      <option value="moderate">Moderate+</option>
-      <option value="unhealthy">Unhealthy+</option>
-      <option value="very_unhealthy">Very unhealthy only</option>
-    </select>
-    <select id="sort-select">
-      <option value="value">Sort: pollution (low)</option>
-      <option value="value_desc">Sort: pollution (high)</option>
-      <option value="name">Sort: city A–Z</option>
-    </select>
-    <button id="search-btn" type="button">Compare</button>
-  </div>
+    <div id="status">Enter cities and click Compare.</div>
 
-  <div id="status">Enter cities and click Compare.</div>
-
-  <div id="layout">
-    <div id="results"></div>
-  </div>
+    <div id="layout">
+      <div id="results"></div>
+    </div>
+  </main>
 
   <aside id="detail-panel" aria-hidden="true">
     <button id="detail-close" type="button" aria-label="Close detail panel">&times;</button>
@@ -291,11 +342,24 @@
 
     const today = () => new Date().toISOString().slice(0, 10);
 
+    const applyTheme = () => {
+      const theme = window.openai?.theme;
+      if (theme === "dark" || theme === "light") {
+        document.documentElement.dataset.theme = theme;
+      }
+    };
+
+    const notifyHeight = () => {
+      const height = Math.ceil(document.documentElement.scrollHeight);
+      window.openai?.notifyIntrinsicHeight?.(height);
+    };
+
     searchInput.value = lastQuery;
     categoryFilter.value = pollutant;
     severityFilter.value = minSeverity;
     sortSelect.value = sortKey;
     dateInput.value = itemDate || today();
+    applyTheme();
 
     const persistState = () => {
       window.openai?.setWidgetState?.({
@@ -315,11 +379,6 @@
     };
 
     const severityClass = (band) => `severity-${band || "good"}`;
-
-    const barWidth = (value) => {
-      const v = Number(value) || 0;
-      return `${Math.min(100, (v / MAX_BAR) * 100)}%`;
-    };
 
     const sortItems = () => {
       sortKey = sortSelect.value;
@@ -371,6 +430,7 @@
         statusEl.textContent = "Loading…";
         statusEl.style.display = "block";
         searchBtn.disabled = true;
+        notifyHeight();
         return;
       }
 
@@ -385,6 +445,7 @@
         `;
         statusEl.style.display = "block";
         persistState();
+        notifyHeight();
         return;
       }
 
@@ -416,51 +477,82 @@
       });
 
       persistState();
+      notifyHeight();
     };
 
-    const toolPayloadBase = () => ({
-      query: lastQuery || searchInput.value.trim(),
-      pollutant: categoryFilter.value,
-      date: dateInput.value || today(),
-      sort_by: sortSelect.value,
-      min_severity: severityFilter.value,
-    });
+    const applyToolResult = (toolResult) => {
+      if (!toolResult?.structuredContent?.items) return;
+      items = toolResult.structuredContent.items;
+      isLoading = false;
+      if (toolResult.structuredContent.pollutant) {
+        categoryFilter.value = toolResult.structuredContent.pollutant;
+        pollutant = categoryFilter.value;
+      }
+      if (toolResult.structuredContent.date) {
+        dateInput.value = toolResult.structuredContent.date;
+        itemDate = dateInput.value;
+      }
+      sortItems();
+      render();
+    };
 
-    const updateFromResponse = (response) => {
-      if (response?.structuredContent?.items) {
-        items = response.structuredContent.items;
-        isLoading = false;
-        if (response.structuredContent.pollutant) {
-          categoryFilter.value = response.structuredContent.pollutant;
-        }
-        if (response.structuredContent.date) {
-          dateInput.value = response.structuredContent.date;
-        }
-        sortItems();
+    const applyGlobals = (globals) => {
+      if (globals?.toolOutput?.items) {
+        items = globals.toolOutput.items;
         render();
+      }
+      if (globals?.widgetState) {
+        selectedItemId = globals.widgetState.selectedItemId ?? selectedItemId;
+        sortKey = globals.widgetState.sortKey ?? sortKey;
+        sortSelect.value = sortKey;
+        lastQuery = globals.widgetState.lastQuery ?? lastQuery;
+        searchInput.value = lastQuery;
+        pollutant = globals.widgetState.pollutant ?? pollutant;
+        categoryFilter.value = pollutant;
+        minSeverity = globals.widgetState.minSeverity ?? minSeverity;
+        severityFilter.value = minSeverity;
+        itemDate = globals.widgetState.date ?? itemDate;
+        if (itemDate) dateInput.value = itemDate;
+      }
+      if (globals?.theme) {
+        applyTheme();
       }
     };
 
     window.addEventListener(
       "openai:set_globals",
       (event) => {
-        const globals = event.detail?.globals;
-        if (globals?.toolOutput?.items) {
-          items = globals.toolOutput.items;
-          render();
+        applyGlobals(event.detail?.globals);
+      },
+      { passive: true }
+    );
+
+    window.addEventListener(
+      "message",
+      (event) => {
+        if (event.source !== window.parent) return;
+        const message = event.data;
+        if (!message || message.jsonrpc !== "2.0") return;
+
+        if (message.method === "ui/notifications/tool-result") {
+          applyToolResult(message.params);
+          return;
         }
-        if (globals?.widgetState) {
-          selectedItemId = globals.widgetState.selectedItemId ?? selectedItemId;
-          sortKey = globals.widgetState.sortKey ?? sortKey;
-          sortSelect.value = sortKey;
-          lastQuery = globals.widgetState.lastQuery ?? lastQuery;
-          searchInput.value = lastQuery;
-          pollutant = globals.widgetState.pollutant ?? pollutant;
-          categoryFilter.value = pollutant;
-          minSeverity = globals.widgetState.minSeverity ?? minSeverity;
-          severityFilter.value = minSeverity;
-          itemDate = globals.widgetState.date ?? itemDate;
-          if (itemDate) dateInput.value = itemDate;
+
+        if (message.method === "ui/notifications/tool-input") {
+          const input = message.params;
+          if (input?.query) {
+            lastQuery = input.query;
+            searchInput.value = lastQuery;
+          }
+          if (input?.pollutant) {
+            pollutant = input.pollutant;
+            categoryFilter.value = pollutant;
+          }
+          if (input?.date) {
+            itemDate = input.date;
+            dateInput.value = itemDate;
+          }
         }
       },
       { passive: true }
@@ -475,7 +567,7 @@
       render();
       try {
         const response = await window.openai.callTool(name, payload);
-        updateFromResponse(response);
+        applyToolResult(response);
       } catch (err) {
         isLoading = false;
         statusEl.textContent = `Error: ${err.message}`;
@@ -502,7 +594,14 @@
       pollutant = categoryFilter.value;
       minSeverity = severityFilter.value;
       itemDate = dateInput.value || today();
-      await callTool(TOOL_REFS.filter, toolPayloadBase());
+      await callTool(TOOL_REFS.filter, {
+        query: lastQuery,
+        category: "",
+        sort_by: sortSelect.value,
+        pollutant,
+        date: itemDate,
+        min_severity: minSeverity,
+      });
     };
 
     searchBtn.addEventListener("click", runSearch);
