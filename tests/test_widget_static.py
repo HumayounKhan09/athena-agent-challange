@@ -40,7 +40,9 @@ def test_comparison_bar_styles(widget_html: str):
 def test_openai_bridge_patterns(widget_html: str):
     assert "toolOutput" in widget_html
     assert "openai:set_globals" in widget_html
+    assert "ui/notifications/tool-result" in widget_html
     assert "setWidgetState" in widget_html
+    assert "notifyIntrinsicHeight" in widget_html
     assert "callTool" in widget_html
     assert "[dev] callTool" in widget_html
 
@@ -48,6 +50,8 @@ def test_openai_bridge_patterns(widget_html: str):
 def test_tool_refs_placeholder_in_source(widget_html: str):
     assert "__TOOL_REFS_JSON__" in widget_html
     assert 'id="tool-refs"' in widget_html
+    head, _ = widget_html.split("</head>", 1)
+    assert 'id="tool-refs"' in head
 
 
 def test_fetch_uses_config_driven_tool_ref(widget_html_served: str):
@@ -82,11 +86,13 @@ def test_loading_state(widget_html: str):
 
 
 def test_polish_features(widget_html: str):
+    assert "<main>" in widget_html
     assert "detail-panel" in widget_html
     assert "count-badge" in widget_html
     assert 'event.key === "Enter"' in widget_html
     assert "Air Quality Comparison" in widget_html
     assert "No readings found" in widget_html
+    assert "--color-surface" in widget_html
 
 
 def test_no_external_dependencies(widget_html: str):

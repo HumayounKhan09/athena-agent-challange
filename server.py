@@ -57,6 +57,21 @@ WIDGET_HTML = _RAW_WIDGET_HTML.replace("__TOOL_REFS_JSON__", _TOOL_REFS_JSON)
 
 OUTPUT_TEMPLATE = "ui://widget/main.html"
 
+WIDGET_RESOURCE_META = {
+    "ui": {
+        "prefersBorder": True,
+        "csp": {
+            "connectDomains": [],
+            "resourceDomains": [],
+        },
+    },
+    "openai/widgetPrefersBorder": True,
+    "openai/widgetDescription": (
+        "Interactive air quality comparison card with city search, pollutant filters, "
+        "severity bands, and sortable bar charts."
+    ),
+}
+
 CORS_HEADERS = {
     "Access-Control-Allow-Origin": "*",
     "Access-Control-Allow-Methods": "POST GET OPTIONS DELETE",
@@ -69,10 +84,10 @@ CORS_HEADERS = {
     OUTPUT_TEMPLATE,
     name="air-quality-widget",
     mime_type="text/html+skybridge",
-    meta={"openai/widgetPrefersBorder": True},
+    meta=WIDGET_RESOURCE_META,
 )
 async def widget_resource() -> str:
-    """Return raw Skybridge HTML; mime_type must be text/html+skybridge for Athena."""
+    """Return Skybridge HTML; mime_type text/html+skybridge enables window.openai."""
     return WIDGET_HTML
 
 
@@ -83,6 +98,8 @@ def _tool_response(items: list[dict], narration: str, tool_key: str, **extra) ->
         content=[TextContent(type="text", text=narration)],
         structuredContent={"items": items, **extra},
         _meta={
+            "ui": {"resourceUri": OUTPUT_TEMPLATE},
+            "openai/outputTemplate": OUTPUT_TEMPLATE,
             "openai/toolInvocation/invoking": tool["invoking"],
             "openai/toolInvocation/invoked": tool["invoked"],
         },
@@ -93,6 +110,10 @@ def _tool_response(items: list[dict], narration: str, tool_key: str, **extra) ->
 def _tool_meta(tool_key: str) -> dict:
     tool = TOOLS[tool_key]
     return {
+        "ui": {
+            "resourceUri": OUTPUT_TEMPLATE,
+            "visibility": ["model", "app"],
+        },
         "openai/outputTemplate": OUTPUT_TEMPLATE,
         "openai/toolInvocation/invoking": tool["invoking"],
         "openai/toolInvocation/invoked": tool["invoked"],
